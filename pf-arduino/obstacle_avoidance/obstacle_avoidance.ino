@@ -11,20 +11,19 @@
 #include <Servo.h>
 
 // Initialization
-
-Servo leftServo;      // Initialize servos
+Servo leftServo;                // Initialize servos
 Servo rightServo;
 
-int incomingByte;          // Incoming serial byte
+int incomingByte;               // Incoming serial byte
 int irForwardLED = 12;          // Forward IR LED
-int irForwardAnalog;       // Forward IR analog reading
-float irForwardInch;         // Forward IR inch value
+int irForwardAnalog;            // Forward IR analog reading
+float irForwardInch;            // Forward IR inch value
 
 // Setup Function
 void setup() {
-  Serial1.begin(115200);  // Begin serial communication with bluetooth
-  pinMode(irForwardLED, OUTPUT);
-  leftServo.attach(8);    // Attach servos to pins and set to no movement
+  Serial1.begin(115200);          // Begin serial communication with bluetooth
+  pinMode(irForwardLED, OUTPUT);  // Set pin for forward IR indicator LED
+  leftServo.attach(8);            // Attach servos to pins and set to no movement
   rightServo.attach(9);
   servoMove(90,90);
 }
@@ -33,11 +32,11 @@ void setup() {
 // Loop Function
 void loop() {
   
-  irForwardAnalog = analogRead(A0);      // Read forward IR sensor reading
+  irForwardAnalog = analogRead(A0);                            // Read forward IR sensor reading
   irForwardAnalog = max(1, irForwardAnalog);
-  irForwardInch = pow(irForwardAnalog,-0.867) * 539.98;  // Convert to inches
+  irForwardInch = pow(irForwardAnalog,-0.867) * 539.98;        // Convert to inches
   
-  Serial1.println(irForwardInch);    // Transmit IR reading
+  Serial1.println(irForwardInch);                              // Transmit IR reading
   
   // Light forward obstacle LED if less than 5 inches
   if (irForwardInch < 5) {
@@ -49,12 +48,12 @@ void loop() {
   // Run while serial communication with control is active
   while ( Serial1.available() > 0) {
     
-    incomingByte = Serial1.read();  // Read recieved serial data
+    incomingByte = Serial1.read();                             // Read recieved serial data
     
     // Move forward if recieved byte is 'w'
     if (incomingByte == 'w') {
-      Serial1.println("Move Forward");   // Transmit line over serial
-      servoMove(180,0);                  // Move forward
+      Serial1.println("Move Forward");                         // Transmit line over serial
+      servoMove(180,0);                                        // Move forward
     }
     
     // Move backward if recieved byte is 's'
@@ -63,13 +62,13 @@ void loop() {
       servoMove(0,180);
     }
 
-    // Turn left if recieved byte is 's'    
+    // Turn left if recieved byte is 'a'    
     if (incomingByte == 'a') {
       Serial1.println("Turn Left");
       servoMove(0,0);
     }
     
-    // Turn right if recieved byte is 's'    
+    // Turn right if recieved byte is 'd'    
     if (incomingByte == 'd') {
       Serial1.println("Turn Right");
       servoMove(180,180);
