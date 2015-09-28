@@ -127,6 +127,7 @@ class App(Frame):
 		self.ir_forward_var = DoubleVar()
 		self.ir_left_var = DoubleVar()
 		self.ir_right_var = DoubleVar()
+		self.motor_speed_var = DoubleVar()
 
 		# Initialize double variables for time
 		self.time_var = DoubleVar()
@@ -135,6 +136,7 @@ class App(Frame):
 		self.status_vars = OrderedDict([('Forward IR', self.ir_forward_var),
 										('Left IR', self.ir_left_var), 
 										('Right IR', self.ir_right_var), 
+										('Motor Speed', self.motor_speed_var),
 										('Time', self.time_var)])
 
 		# Forward IR label
@@ -167,15 +169,24 @@ class App(Frame):
 		# Separator between IR and other status
 		self.control_sep = ttk.Separator(self.status, orient=HORIZONTAL)
 		self.control_sep.grid(column=0, row=4, columnspan=3, sticky=(N, S, E, W), pady=12)
-		
+
+		# Motor Speed label
+		self.ir_right_label = ttk.Label(self.status, text="Speed", justify=LEFT)
+		self.ir_right_label.grid(column=0, columnspan=1, row=5)
+
+		# Motor Speed value
+		self.ir_right = ttk.Label(self.status, justify=CENTER)
+		self.ir_right['textvariable'] = self.status_vars['Motor Speed']
+		self.ir_right.grid(column=2, row=5)
+
 		# Time label
 		self.time_label = ttk.Label(self.status, text="Time", justify=LEFT)
-		self.time_label.grid(column=0, row=5)
+		self.time_label.grid(column=0, row=6)
 
 		# Time value
 		self.time = ttk.Label(self.status,  justify=RIGHT)
 		self.time['textvariable'] = self.status_vars['Time']
-		self.time.grid(column=2, row=5)
+		self.time.grid(column=2, row=6)
 
 	# Define bluetooth connection procedure
 	# called when user hits "Connect" or "Disconnect"
@@ -193,6 +204,7 @@ class App(Frame):
 			self.port_rate.configure(state="normal")
 			self.port_button.configure(text="Connect")
 			self.port_connected = False
+			self.remote_control(False)
 
 		# If connect_bluetooth procedure is run with intention to connect
 		else:
