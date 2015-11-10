@@ -12,13 +12,12 @@ import math
 class PathfinderCV(object):
 
 	# Initialize the PathfinderCV instance, prepare and start video capture
-	def __init__(self):
+	def __init__(self, mode, os):
+
+		self.mode = mode
 
 		# Set script start time
 		self.scriptStartTime = time.time()
-
-		# Select OS
-		os = 'linux'
 
 		# Linux
 		if os == 'linux':
@@ -55,12 +54,13 @@ class PathfinderCV(object):
 
 		# Initialize sets and count to 0
 		self.shapeSets = []
-		self.shapeSizes = []
 		self.finalSet = []
 		self.detected = 0
 
-		# Setup window
-		cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
+		if self.mode == 'debug':
+
+			# Setup window
+			cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
 
 	# Release capture destroy all windows, exit instance
 	def __del__(self):
@@ -88,10 +88,13 @@ class PathfinderCV(object):
 			# Define bounding box
 			maxContour, maxRectangle, maxContourArea = self.detectBoundary(frame, contours)
 
-		# Display final image
-		cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
-		cv2.imshow('Shape Detection', frame)
-		cv2.moveWindow('Shape Detection', 360, 0)
+		if self.mode == 'debug':
+
+			# Display final image
+			cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
+			cv2.imshow('Shape Detection', frame)
+			cv2.moveWindow('Shape Detection', 360, 0)
+
 		cv2.waitKey(1)
 
 	# Prepare frame, find contours, identify bounding rectangle of the sign, determine centroid error,
@@ -119,10 +122,13 @@ class PathfinderCV(object):
 				# Identify all nested shapes
 				self.detected = self.detectNestedShapes(frame, contours, hierarchy, maxContour, maxRectangle, maxContourArea)
 
-		# Display final image
-		cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
-		cv2.imshow('Shape Detection', frame)
-		cv2.moveWindow('Shape Detection', 360, 0)
+		if self.mode == 'debug':
+
+			# Display final image
+			cv2.namedWindow('Shape Detection', cv2.WINDOW_NORMAL)
+			cv2.imshow('Shape Detection', frame)
+			cv2.moveWindow('Shape Detection', 360, 0)
+
 		cv2.waitKey(1)
 
 	# Setup the Playstation Eye camera with manual capture settings
@@ -180,22 +186,25 @@ class PathfinderCV(object):
 		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
 		imgMask = cv2.morphologyEx(imgRangeMask, cv2.MORPH_OPEN, kernel)
 
-		imgBitwise = cv2.bitwise_and(frame, frame, mask = imgMask)
-
 		# Use Canny edge detection to capture the edges of the shapes
 		cannyLowThreshold = 5
 		cannyRatio = 3
 
 		preppedFrame = cv2.Canny(imgMask, cannyLowThreshold, cannyLowThreshold * cannyRatio, 5)
 
-		# Display mask
-		cv2.namedWindow('Threshold Mask', cv2.WINDOW_NORMAL)
-		cv2.imshow('Threshold Mask', imgBitwise)
-		cv2.moveWindow('Threshold Mask', 0, 0)
+		if self.mode == 'debug':
 
-		cv2.namedWindow('Canny Edges', cv2.WINDOW_NORMAL)
-		cv2.imshow('Canny Edges', preppedFrame)
-		cv2.moveWindow('Canny Edges', 0, 300)
+			# Bitwise image
+			imgBitwise = cv2.bitwise_and(frame, frame, mask = imgMask)
+
+			# Display mask
+			cv2.namedWindow('Threshold Mask', cv2.WINDOW_NORMAL)
+			cv2.imshow('Threshold Mask', imgBitwise)
+			cv2.moveWindow('Threshold Mask', 0, 0)
+
+			cv2.namedWindow('Canny Edges', cv2.WINDOW_NORMAL)
+			cv2.imshow('Canny Edges', preppedFrame)
+			cv2.moveWindow('Canny Edges', 0, 300)
 
 		# Return Canny edges to main
 		return preppedFrame
@@ -205,8 +214,10 @@ class PathfinderCV(object):
 	# and error between the frame center and contour center for tilt mechanism feedback
 	def detectBoundary(self, frame, contours):
 
-		# Draw a dot at center of bounding rectangle
-		cv2.circle(frame, (self.frameCx, self.frameCy), 5, (0,255,0), 2)
+		if self.mode == 'debug':
+
+			# Draw a dot at center of bounding rectangle
+			cv2.circle(frame, (self.frameCx, self.frameCy), 5, (0,255,0), 2)
 
 		# Set arbitrary contour area for initialization
 		maxRectangle = []
@@ -214,15 +225,10 @@ class PathfinderCV(object):
 		maxContourArea = 100
 
 		# Identify max contour
-		for contour in contours: 
-
-			# Approximate the contour with accuracy proportional to contour perimeter
-			approxContour = cv2.approxPolyDP(contour, 
-				cv2.arcLength(contour, True) * 0.02,
-				True)
+		for contour in contours:
 
 			# Calculate the contour area
-			contourArea = abs(cv2.contourArea(approxContour))
+			contourArea = abs(cv2.contourArea(contour))
 
 			# Ignore small contours
 			if (abs(contourArea) < 100):
@@ -231,7 +237,7 @@ class PathfinderCV(object):
 			if (contourArea > maxContourArea):
 
 				# Create a bounding rectangle
-				maxRect = cv2.boundingRect(approxContour)
+				maxRect = cv2.boundingRect(contour)
 
 				if (maxRect[3] > 0):
 
@@ -243,18 +249,20 @@ class PathfinderCV(object):
 
 						# Define new max contour
 						maxContourArea = abs(contourArea)
-						maxContour = approxContour
+						maxContour = contour
 						maxRectangle = maxRect
 		
 		if maxContourArea > 100:
 
-			# Draw bounding rectangle in white
-			cv2.rectangle(frame, (maxRectangle[0], maxRectangle[1]), (maxRectangle[0] + maxRectangle[2], maxRectangle[1] + maxRectangle[3]), (255,255,255), 5)
-
 			(_, signCy), _ = cv2.minEnclosingCircle(maxContour)
+
+			if self.mode == 'debug':
+
+				# Draw bounding rectangle in white
+				cv2.rectangle(frame, (maxRectangle[0], maxRectangle[1]), (maxRectangle[0] + maxRectangle[2], maxRectangle[1] + maxRectangle[3]), (255,255,255), 5)
 		
-			# Draw a dot at center of bounding rectangle
-			cv2.circle(frame, (self.frameCx, int(signCy)), 2, (0,0,255), 2)
+				# Draw a dot at center of bounding rectangle
+				cv2.circle(frame, (self.frameCx, int(signCy)), 2, (0,0,255), 2)
 			
 			# Find error in angles
 			self.centroidError = int(math.degrees(math.atan2((signCy - self.frameCy) , self.focal)))
@@ -271,55 +279,48 @@ class PathfinderCV(object):
 		sortedSet = []
 
 		nestedContours = []
+		nestedContourAreas = []
 
 		# Identify nested contours within max contour
 		for i in range(0, len(contours) - 1):
 
-			# Approximate the contour with accuracy proportional to contour perimeter
-			approxContour = cv2.approxPolyDP(contours[i], 
-				cv2.arcLength(contours[i], True) * 0.02,
-				True)
-
 			# Calculate the contour area
-			contourArea = cv2.contourArea(approxContour)
+			contourArea = cv2.contourArea(contours[i])
 			
 			# Ignore small contours
 			if (abs(contourArea) < 100):
 				continue
 
-			(x,y), _ = cv2.minEnclosingCircle(approxContour)
-			center = (int(x),int(y))
-
-			# Use point-in-contour test to determine location of center relative to max contour
-			inMaxContour = cv2.pointPolygonTest(maxContour, center, True)
-
 			# If passes point-in-contour test, less than max contour area, and has no children
-			if (inMaxContour > 0 and abs(contourArea) < 0.75 * maxContourArea and hierarchy[0][i][2] < 0) :
+			if (abs(contourArea) < 0.75 * maxContourArea and hierarchy[0][i][2] < 0) :
 
-				nestedContours.append(approxContour)
+				nestedContours.append(contours[i])
+				nestedContourAreas.append(abs(contourArea))
 
 		# Calculate number of nested contours
 		numContours = len(nestedContours)
 
 		# Identify shape type for each of the nested contours
-		for contour in nestedContours:
+		for contour, contourArea in zip(nestedContours, nestedContourAreas):
 
-			# Calculate the contour area
-			contourArea = cv2.contourArea(contour)
+			# Approximate the contour with accuracy proportional to contour perimeter
+			approxContour = cv2.approxPolyDP(contour, 
+				cv2.arcLength(contour, True) * 0.02,
+				True)
 
 			# Calculate the number of vertices
-			vertices = len(contour)
+			vertices = len(approxContour)
 
 			# Evaluate minimum enclosing circle around contour
-			(x,y), radius = cv2.minEnclosingCircle(contour)
+			(x,y), radius = cv2.minEnclosingCircle(approxContour)
 			center = (int(x),int(y))
 			radius = int(radius)
 
 			# Calculate enclosing circle area
-			circleArea = math.pi * radius * radius
+			circleArea = 3.14 * radius * radius
 
 			# Evaluate the minimum area rectangle around contour
-			rect = cv2.minAreaRect(contour)
+			rect = cv2.minAreaRect(approxContour)
 			rectBox = cv2.cv.BoxPoints(rect)
 			rectBox = np.int0(rectBox)
 			rectArea = cv2.contourArea(rectBox)
@@ -330,67 +331,115 @@ class PathfinderCV(object):
 			# Calculate area error between contour and min area rectangle
 			rectAreaError = abs(1 - (contourArea / rectArea))
 
-			# Draw bounding circle (green) and rectangle (blue) shapes
-			cv2.circle(frame, center, radius, (0,255,0), 2)
-			cv2.drawContours(frame, [rectBox], 0, (255,0,0), 2)
+			if self.mode == 'debug':
+
+				# Draw bounding circle (green) and rectangle (blue) shapes
+				cv2.circle(frame, center, radius, (0,255,0), 2)
+				cv2.drawContours(frame, [rectBox], 0, (255,0,0), 2)
 
 			# Find relative position in max rectangle
-			relPos = self.getContourRegion(maxRectangle, center, numContours)
+			relPos = round(float(center[0] - maxRectangle[0]) / maxRectangle[2], 2)
 
 			# Circle, if the enclosing circle area error below 20% (0.2)
-			if (circleAreaError < 0.2 and rectArea > circleArea):
-				self.showLabel(frame, "CIRCLE", contour)
-				iterShapes.insert(relPos, 'circle')
+			if (circleAreaError < 0.25 and rectArea > circleArea):
+				
+				iterShapes.append((relPos, 'circle'))
+				if self.mode == 'debug':
+					self.showLabel(frame, "CIRCLE", approxContour)
 
 			# Rectangle, if the bounding rectangle area error below 15% (0.15)
 			elif (rectAreaError < 0.15 and circleArea > 1.5 * rectArea):
-				self.showLabel(frame, "RECT", contour)
-				iterShapes.insert(relPos, 'rect')
+				
+				iterShapes.append((relPos, 'rect'))
+				if self.mode == 'debug':
+					self.showLabel(frame, "RECT", approxContour)
 
 			# Triangle, if the bounding rectangle area error between 45% and 60% (0.45, 0.6) and vertices < 10
-			elif (rectAreaError > 0.45 and rectAreaError < 0.6 and vertices < 10):
-				self.showLabel(frame, "TRI", contour)
-				iterShapes.insert(relPos, 'tri')
+			elif (rectAreaError > 0.4 and rectAreaError < 0.6 and vertices < 10):
+				
+				iterShapes.append((relPos, 'tri'))
+				if self.mode == 'debug':
+					self.showLabel(frame, "TRI", approxContour)
 
 			# Triangle, if the bounding rectangle area error between 30% and 50% (0.3, 0.5) and vertices > 10
 			elif (rectAreaError > 0.3 and rectAreaError < 0.5 and vertices > 10):
-				self.showLabel(frame, "CROSS", contour)
-				iterShapes.insert(relPos, 'cross')
+
+				iterShapes.append((relPos, 'cross'))
+				if self.mode == 'debug':
+					self.showLabel(frame, "CROSS", approxContour)
 
 		# If number of contours > 0 and equal to shape list
-		if (numContours > 0 and len(iterShapes) == numContours):
+		if (numContours > 0 and len(iterShapes) >= numContours):
 
 			# Add iteration shape list to master shape list
 			self.shapeSets.append(iterShapes)
 
-			# Add size of shape list to shape size list
-			self.shapeSizes.append(len(iterShapes))
-
 		# Calculate final set once atleast 10 sets have been added
-		if (len(self.shapeSizes) > 10):
-			
-			# Find the mode of the shape size list
-			shapeSize = max(set(self.shapeSizes), key = self.shapeSizes.count)
+		if (len(self.shapeSets) > 10):
 
-			# If count of the mode value > 10
-			if (self.shapeSizes.count(shapeSize) > 10):
+			maxShapeCount = 0
+			idealShapeSets = 0
+			shapeTypes = []
+			shapeSetList = [shape for shapeSet in self.shapeSets for shape in shapeSet]
 
-				# For each shape set, add to sorted list if size equals mode shape size
-				for shapeSet in self.shapeSets:
+			# Find max shape set size
+			for shapeSet in self.shapeSets:
 
-					if (len(shapeSet) == shapeSize):
+				shapeSetSize = len(shapeSet)
 
-						sortedSet.append(shapeSet)
-						# print shapeSet
+				if shapeSetSize > maxShapeCount:
+					maxShapeCount = shapeSetSize
 
-				# For each column in sorted set, find mode shape and assign to final set
-				for i in range(shapeSize):
+			# Define ideal sets as those with length equal to max shape set size
+			for shapeSet in self.shapeSets:
 
-					sortedCol = [row[i] for row in sortedSet];
-					modeCol = max(set(sortedCol), key = sortedCol.count)
-					
-					self.finalSet.insert(i, modeCol)
-					
+				if len(shapeSet) == maxShapeCount:
+					idealShapeSets = idealShapeSets + 1
+
+			# If count of the ideal sets > 10
+			if (idealShapeSets > 10):
+
+				# For each shape, add to shape types list
+				for shape in shapeSetList:
+
+					_, shapeType = shape
+
+					if shapeType not in shapeTypes:
+						shapeTypes.append(shapeType)
+
+					if len(shapeTypes) == maxShapeCount:
+						break
+
+				# For each shape type, average positions and determine relative positions
+				for shapeType in shapeTypes:
+
+					relPositions = []
+
+					for shape in shapeSetList:
+
+						relPos, shapePosType = shape
+
+						if shapePosType == shapeType:
+							relPositions.append(relPos)
+
+					# Average relative positions found for this shape type
+					relPosition = sum(relPositions) / len(relPositions)
+
+					# Find the integer position of the contour
+					for num in range(0, maxShapeCount):
+
+						lowerBound = num / float(maxShapeCount)
+						upperBound = (num + 1) / float(maxShapeCount)
+
+						# If relPos is higher than lower bound and less than upper bound, assign num
+						if (relPosition > lowerBound and relPosition < upperBound):
+
+							self.finalSet.append((num + 1, shapeType))
+							break
+
+				self.finalSet.sort(key=lambda tup: tup[0])
+				self.finalSet = [shape[1] for shape in self.finalSet]
+
 				# Return detected variable as true
 				return 1
 
@@ -412,24 +461,3 @@ class PathfinderCV(object):
 
 		# Display black text on top of the filled white rectangle
 		cv2.putText(image, label, labelCenter, cv2.FONT_HERSHEY_SIMPLEX, 0.4, ([0, 0, 0]))
-
-	# Given bounding shape, center of nested contour, and number of shapes, 
-	# find the relative position of the contour within the bounding shape
-	def getContourRegion(self, maxRectangle, center, numContours):
-
-		# Get relative X position of contour in max rectangle
-		relPos = float(center[0] - maxRectangle[0]) / maxRectangle[2]
-
-		# Find the integer position of the contour
-		for num in range(1, numContours):
-
-			lowerBound = (num - 1) / float(numContours)
-			upperBound = num / float(numContours)
-
-			# If relPos is higher than lower bound and less than upper bound, assign num
-			if (relPos > lowerBound and relPos < upperBound):
-
-				return num - 1
-
-		# Else, return num of contours (boneyard)
-		return numContours

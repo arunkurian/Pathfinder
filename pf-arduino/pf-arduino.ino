@@ -1,10 +1,10 @@
 /*
-  Pathfinder Arduino
-  v3 Tin Man
+  Pathfinder Arduino - Main
+  v4 Wizard
 
   Obstacle avoidance with brushed DC motors, encoders, and IR sensors.
 
-  modified 12 Oct 2015
+  modified 9 Nov 2015
   by Arun Kurian
  */
 
@@ -14,13 +14,16 @@
 #include <Encoder.h>
 #include <autotune.h>
 #include <microsmooth.h>
+#include <QTRSensors.h>
+#include <LiquidCrystal.h>
+#include <Servo.h>
 
 
 // Initialization
-PololuQik2s9v1 qik(10, 11, 12); // Constructor for qik motor controller
+PololuQik2s9v1 qik(11, 12, 10); // Constructor for qik motor controller
 
 Encoder leftEncoder(2, 3);      // Initialize left encoder on pins 2 (A) and 3 (B)
-Encoder rightEncoder(20, 21);   // Initialize right encoder on pins 20 (A) and 21 (B)
+Encoder rightEncoder(21, 20);   // Initialize right encoder on pins 20 (A) and 21 (B)
 
 int incomingByte;               // Incoming serial byte
 int robotMode;                  // Define autonomous(1) or remote control(0) mode
@@ -35,6 +38,37 @@ uint16_t *irForwardPtr;         // Forward IR history pointer
 uint16_t *irLeftPtr;            // Left IR history pointer
 uint16_t *irRightPtr;           // Right IR history pointer
 
+QTRSensorsAnalog qtrForward((unsigned char[]) {  // Constructor for forward line sensor
+  8, 9, 10
+}, 3);
+
+QTRSensorsAnalog qtrLeft((unsigned char[]) {     // Constructor for left line sensor
+  11, 12, 13
+}, 3);
+
+QTRSensorsAnalog qtrRight((unsigned char[]) {    // Constructor for right line sensor
+  5, 6, 7
+}, 3);
+
+int forwardReading;
+int leftReading;
+int rightReading;
+int forwardPos;
+
+uint16_t *lineForwardPtr;       // Forward IR history pointer
+uint16_t *lineLeftPtr;          // Left IR history pointer
+uint16_t *lineRightPtr;         // Right IR history pointer
+
+int intCounter;                 // Intersection counter to wait and verify intersection points
+int minLineValue = 350;         // Minimum average line readings to detect intersection
+int steadySpeed = 50;           // Steady speed for robot
+int sensorReadCount = 0;        // Initial sensor count
+int lastError = 0;              // Initial error
+
+LiquidCrystal lcd(49, 47, 48, 50, 51, 52, 53);   // LCD display setup with 4 data lines
+
+Servo camServo;                 // Initialize tilt servo for camera
+
 
 // Setup Function
 void setup() {
@@ -42,22 +76,50 @@ void setup() {
   Serial1.begin(115200);          // Begin serial communication with bluetooth
   Serial.begin(9600);
 
-  robotMode = 0;                  // Set to remote control mode initially
+  irForwardPtr = ms_init(SMA);    // Initialize obstacle IR history pointers
+  irLeftPtr = ms_init(SMA);
+  irRightPtr = ms_init(SMA);
+
+  lineForwardPtr = ms_init(SMA);  // Initialize line IR history pointers
+  lineLeftPtr = ms_init(SMA);
+  lineRightPtr = ms_init(SMA);
 
   irForwardLimit = 300;           // Set IR limits for analog reading
   irSideLimit = 400;              // Higher means closer
 
-  irForwardPtr = ms_init(SMA);    // Initialize IR history pointers
-  irLeftPtr = ms_init(SMA);
-  irRightPtr = ms_init(SMA);
+  camServo.attach(8);             // Set up tilt servo for camera on Pin 8
+  camServo.write(60);             // Set servo motor to 60 degrees - forward
 
   qik.init();                     // Reset qik and initialize serial comms at 9600 bps
+  lcd.begin(16, 2);               // Set up LCD for 16x2 display
+
+  lcd.setCursor(0, 0);            // Display introduction message
+  lcd.print("PATHFINDER");
+  lcd.setCursor(0, 1);
+  lcd.print("Waiting on BT...");
+
+  Serial1.flush();                // Flush Serial1 (BT) buffer
+  while (!Serial1.available());   // Wait until Serial1 (BT) connection is made before proceeding
+
+  lcd.clear();                    // Clear LCD and Display "BT Connected!" message
+  lcd.setCursor(0, 0);
+  lcd.print("BT Connected!");
+  delay(1000);
+
+  calibrateLineSensors();         // Run routine to calibrate line sensors
+
+  delay(2000);                    // Pause in setup to verify before going to main loop
 
 }
 
 
 // Loop Function
 void loop() {
+
+  unsigned int forwardLineSensors[3];
+  unsigned int forwardSensors[3];
+  unsigned int rightSensors[3];
+  unsigned int leftSensors[3];
 
   irForwardAnalog = analogRead(A0);                              // Read forward IR sensor reading
   irForwardAnalog = sma_filter(irForwardAnalog, irForwardPtr);   // Use simple moving average filter
@@ -68,268 +130,105 @@ void loop() {
   irRightAnalog = analogRead(A2);                                // Read right IR sensor reading
   irRightAnalog = sma_filter(irRightAnalog, irRightPtr);         // Use simple moving average filter
 
-  // For autonomous control of robot
-  if (robotMode == 1) {
+  int obstacle = obstacleDetected();                             // Determine if obstacle is detected
 
-    // Run IR-based obstacle avoidance routine
-    runObstacleAvoidance();
+  forwardPos = qtrForward.readLine(forwardLineSensors);          // Calculate forward line position for PD error
 
-  }
+  qtrForward.readCalibrated(forwardSensors);                     // Calculate average forward line readings
+  forwardReading = averageLineReading(forwardSensors);
+  forwardReading = sma_filter(forwardReading, lineForwardPtr);
 
-  // Run while serial communication with control is active
-  if (Serial1.available() > 0) {
+  qtrLeft.readCalibrated(leftSensors);                           // Calculate left forward line readings
+  leftReading = averageLineReading(leftSensors);
+  leftReading = sma_filter(leftReading, lineLeftPtr);
 
-    incomingByte = Serial1.read();      // Read recieved serial data
+  qtrRight.readCalibrated(rightSensors);                         // Calculate right forward line readings
+  rightReading = averageLineReading(rightSensors);
+  rightReading = sma_filter(rightReading, lineRightPtr);
 
-    // Set control mode of robot
-    if (incomingByte == '1') {
-      robotMode = 1;                   // Set robot mode to autonomous
-    }
-    else if (incomingByte == '0') {
-      robotMode = 0;                   // Set robot mode to remote control
-    }
+  // Print readings on LCD
+  lcd.clear();
+  lcd.print(leftReading);
+  lcd.setCursor(5, 0);
+  lcd.print(forwardReading);
+  lcd.setCursor(11, 0);
+  lcd.print(rightReading);
 
-    // For remote control of robot
-    if (robotMode == 0) {
+  // Wait until atleast three reads have been completed
+  if (sensorReadCount > 3) {
 
-      // Run Bluetooth-based remote control routine
-      runRemoteControl(incomingByte);
-      setDesiredTranslation(0); //Stop
+    // Run while not picked up (1000), nonzero, and no obstacle
+    if (forwardReading < 1000 && forwardReading > 0 && obstacle == 0) {
 
-    }
+      // Stop at intersection, if left or right detectors exceed values
+      if (leftReading > minLineValue || rightReading > minLineValue) {
+        
+        // Wait until intersection is confirmed
+        if (intCounter > 3) {
 
-    // Send sensor data of serial
-    if (incomingByte == 'r') {
+          // Stop
+          qik.setSpeeds(0, 0);
+          
+          // Solve intersection
+          arbitrateIntersection(forwardSensors, leftSensors, rightSensors);
 
-      Serial1.print(irForwardAnalog);
-      Serial1.print(',');
-      Serial1.print(irLeftAnalog);
-      Serial1.print(',');
-      Serial1.println(irRightAnalog);
+        }
+        
+        // Iterate counter
+        intCounter++;
+
+      // Drive forward along line
+      } else {
+        
+        int error;
+        int errorDer;
+        float motorSpeed;
+        float leftMotorCommand;
+        float rightMotorCommand;
+
+        // Set PD gains
+        float Kp = 0.06;
+        float Kd = 0.07;
+
+        error = 1000 - forwardPos;                                      // Calculate error
+
+        errorDer = error - lastError;                                   // Calculate error derivative
+
+        motorSpeed = Kp * error + Kd * errorDer;                        // Calculate PD command differential
+        lastError = error;                                              // Set last error = current error
+
+        leftMotorCommand = steadySpeed - motorSpeed;                    // Determine motor commands
+        rightMotorCommand = steadySpeed + motorSpeed;
+
+        leftMotorCommand = constrain(leftMotorCommand, -127, 127);      // Constrain motor commands
+        rightMotorCommand = constrain(rightMotorCommand, -127, 127);
+
+        qik.setSpeeds(leftMotorCommand, -rightMotorCommand);            // Set motor commands
+
+      }
 
     } else {
-
-      delay(100);
-
-    }
-  }
-
-}
-
-// Remote control routine (in remote control mode)
-void runRemoteControl(int inByte) {
-
-  int delTranslate = 30;                      // Set delta translate value
-  int delRotate = 25;                         // Set delta rotate value
-
-  if (inByte == 'w') {
-    setDesiredTranslation(delTranslate);      // Move forward if recieved byte is 'w'
-  }
-  else if (inByte == 's') {
-    setDesiredTranslation(-delTranslate);     // Move backward if recieved byte is 's'
-  }
-  else if (inByte == 'a') {
-    setDesiredRotation(-delRotate);           // Turn left if recieved byte is 'a'
-  }
-  else if (inByte == 'd') {
-    setDesiredRotation(delRotate);            // Turn right if recieved byte is 'd'
-  }
-
-}
-
-// Obstacle avoidance routine (in autonomous mode)
-void runObstacleAvoidance() {
-
-  int irOverall;                                    // Weighted average of all IR readings
-
-  irOverall = irForwardAnalog / 2;
-  irOverall = irOverall + irLeftAnalog / 4;
-  irOverall = irOverall + irRightAnalog / 4;
-  irOverall = constrain(irOverall, 0, 350);
-
-  int motorSpeed = map(irOverall, 0, 350, 100, 40);  // Determine motor speed from IR saturation
-
-  // If completely surrounded
-  if (irOverall > 325) {
-
-    setDesiredTranslation(0);     // Stop
-    delay(250);
-    setDesiredTranslation(-50);   // Move back
-
-    // Turn around
-    if (irLeftAnalog < irRightAnalog) {
-      setDesiredRotation(-180);
-    } else {
-      setDesiredRotation(180);
+      
+      qik.setSpeeds(0, 0);  // Stop if obstacle is detected or no path
+      
     }
 
   }
 
-  // If forward IR detects obstacle
-  if (irForwardAnalog > irForwardLimit) {
-
-    setDesiredTranslation(0);              // Stop
-    delay(100);
-    setDesiredTranslation(-50);            // Move back
-
-    // If there is more space on left side
-    if (irLeftAnalog < irRightAnalog) {    // Turn left
-      setDesiredRotation(-45);
-    } else {                               // Turn right
-      setDesiredRotation(45);
-    }
-
-  // If forward IR doesn't detect obstacle
-  } else {
-    setDesiredVelocity(motorSpeed, 1);     // Move forward
-  }
-
-  // If left IR detects an obstacle, turn right
-  if (irLeftAnalog > irSideLimit) {
-    setDesiredRotation(30);
-  }
-
-  // If right IR detects an obstacle, turn left
-  if (irRightAnalog > irSideLimit) {
-    setDesiredRotation(-30);
-  }
+  // Iterate sensor count
+  sensorReadCount++;
 
 }
 
-// Function to set robot direction of motion
-void setDesiredVelocity(int motorSpeed, int bodyDirection) {
-
-  if (bodyDirection == 1) {                  // Move forward
-    qik.setSpeeds(-motorSpeed, motorSpeed);
-  } else {                                   // Move back
-    qik.setSpeeds(motorSpeed, -motorSpeed);
-  }
-
-}
-
-// Function to return actual motor angle positions when passed encoder values
-float getMotorActual(float encoderValue) {
-
-  float motorActual;
-  float countsPerRev = 2248.8;                // Counts per revolution of geared motor shaft
-
-  motorActual = encoderValue / countsPerRev;  // Determine true angle of motor shaft
-  motorActual = motorActual * 360;
-
-  return motorActual;
-
-}
-
-// Function to convert desired translations of the robot into rotations of the motors
-void setDesiredTranslation(int desiredTranslation) {
-
-  int radiusWheel = 40;                  // Define radius of wheel
-  float arcRatio = 57.3 / radiusWheel;   // Define ratio for arc length of the wheels
-
-  // Calculate the translation of the body
-  float translation = desiredTranslation * arcRatio;
-
-  // Run desired step
-  setDesiredStep(translation, -translation);
-
-}
-
-// Function to convert desired rotations of robot into rotations of the motors
-void setDesiredRotation(int desiredAngle) {
-
-  int radiusWheel = 40;                    // Define radius of wheel
-  int radiusBody = 85;                     // Define half distance between wheels
-
-  float radiusRatio = 85 / 40;              // Find ratio of radii
+// Obstacle detection function
+int obstacleDetected() {
   
-  // Calculate angles from desired body rotation and ratio of radii
-  float leftAngle = (float)desiredAngle * radiusRatio;
-  float rightAngle = (float)desiredAngle * radiusRatio;
-
-  // Run desired step
-  setDesiredStep(leftAngle, rightAngle);
-
-}
-
-// Function to accomplish desired steps for motor movements using PID
-void setDesiredStep(float leftDesiredDiff, float rightDesiredDiff) {
-
-  float leftMotorDesired, rightMotorDesired;
-  float leftMotorActual, rightMotorActual;
-  float leftMotorCommand, rightMotorCommand;
-  float leftErrorLast, rightErrorLast;
-  float leftErrorDer, rightErrorDer;
-
-  // Define control gains (Kp, Ki, Kd) for PID
-  float KpLeft = 0.0092;
-  float KpRight = 0.009;
-  float Ki = 0.001;
-  float Kd = 0.001;
-
-  // Initialize error, desired, and actual values
-  float leftError = leftDesiredDiff;
-  float rightError = rightDesiredDiff;
-
-  float leftErrorIntegral = 0;
-  float rightErrorIntegral = 0;
-
-  leftMotorActual = getMotorActual( (float)leftEncoder.read() );
-  rightMotorActual = getMotorActual( (float)rightEncoder.read() );
-
-  leftMotorDesired = leftMotorActual + leftDesiredDiff;
-  rightMotorDesired = rightMotorActual + rightDesiredDiff;
-  
-  // Drive error to zero while errors are greater than 5 degrees
-  while (abs(leftError) > 5 || abs(rightError) > 5) {
-
-    // Get current motor angles
-    leftMotorActual = getMotorActual( (float)leftEncoder.read() );
-    rightMotorActual = getMotorActual( (float)rightEncoder.read() );
-
-    // Save previous error for derivative error term
-    leftErrorLast = leftError;
-    rightErrorLast = rightError;
-
-    // Calculate error (desired - actual)
-    leftError = leftMotorDesired - leftMotorActual;
-    rightError = rightMotorDesired - rightMotorActual;
-
-    // Calculate sum of errors when errors begin to converge (to prevent windup)
-    if (abs(leftError) < abs(leftDesiredDiff / 3)) {
-      leftErrorIntegral = leftErrorIntegral + leftError;
-    } else {
-      leftErrorIntegral = 0;
-    }
-
-    if (abs(rightError) < abs(rightDesiredDiff / 3)) {
-      rightErrorIntegral = rightErrorIntegral + rightError;
-    } else {
-      rightErrorIntegral = 0;
-    }
-
-    // Calculate difference of previous and current errors
-    leftErrorDer = leftErrorLast - leftError;
-    rightErrorDer = rightErrorLast - rightError;
-
-    // Define PID motor command for left motor
-    leftMotorCommand = KpLeft * leftError + Ki * leftErrorIntegral + Kd * leftErrorDer;
-    leftMotorCommand = constrain(leftMotorCommand, -1, 1);
-    leftMotorCommand = leftMotorCommand * 127.0;
-
-    // Define PID motor command for right motor
-    rightMotorCommand = KpRight * rightError + Ki * rightErrorIntegral + Kd * rightErrorDer;
-    rightMotorCommand = constrain(rightMotorCommand, -1, 1);
-    rightMotorCommand = rightMotorCommand * 127.0;
-
-    // Set motor command speeds
-    qik.setSpeeds(-(int)leftMotorCommand, -(int)rightMotorCommand);
-
-    // Delay loop time for consistency
-    delay(3);
-
+  // If forward, left, or right IRs detect an obstacle, set flag
+  if (irForwardAnalog > irForwardLimit || irLeftAnalog > irSideLimit || irRightAnalog > irSideLimit) {
+    return 1;
   }
-
-  // Stop motors when desired angles achieved
-  qik.setSpeeds(0, 0);
-
+  else {
+    return 0;
+  }
+  
 }
