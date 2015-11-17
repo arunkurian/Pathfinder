@@ -15,8 +15,11 @@ void calibrateLineSensors() {
   double percent;
 
   // Clear LCD and display line calibration
-  lcd.setCursor(0, 0);
-  lcd.print("Line Calibrating");
+  lcd.clear();
+  lcd.setCursor(3, 0);
+  lcd.print("Pathfinder");
+  lcd.setCursor(0, 1);
+  lcd.print("Calibrating ");
 
   // Drive forward slowly open loop
   qik.setSpeeds(-30, -30);
@@ -30,11 +33,11 @@ void calibrateLineSensors() {
     qtrLeft.calibrate();
 
     // Display percent complete
-    lcd.setCursor(0, 1);
+    lcd.setCursor(12, 1);
     percent = 100 * i /  (numIterations - 1);
     percent = percent / 2.0;
     lcd.print((int)percent);
-    lcd.print(" % ");
+    lcd.print("%");
 
     delay(10);
   }
@@ -54,11 +57,11 @@ void calibrateLineSensors() {
     qtrLeft.calibrate();
 
     // Display percent complete
-    lcd.setCursor(0, 1);
+    lcd.setCursor(12, 1);
     percent = 100 * i / (numIterations - 1);
     percent = percent / 2.0 + 50.0;
     lcd.print((int)percent);
-    lcd.print(" % ");
+    lcd.print("%");
 
     delay(10);
   }
@@ -76,19 +79,23 @@ void calibrateLineSensors() {
   int rightCalMin = averageLineReading(qtrRight.calibratedMinimumOn);
   int rightCalMax = averageLineReading(qtrRight.calibratedMaximumOn);
 
-  // Clear LCD and print averaged min and max line IR values
-  lcd.clear();
-  lcd.print(leftCalMin);
-  lcd.setCursor(5, 0);
-  lcd.print(forwardCalMin);
-  lcd.setCursor(11, 0);
-  lcd.print(rightCalMin);
-  lcd.setCursor(0, 1);
-  lcd.print(leftCalMax);
-  lcd.setCursor(5, 1);
-  lcd.print(forwardCalMax);
-  lcd.setCursor(11, 1);
-  lcd.print(rightCalMax);
+}
+
+void readLines(unsigned int forwardLineSensors[], unsigned int forwardSensors[], unsigned int leftSensors[], unsigned int rightSensors[]) {
+
+  forwardPos = qtrForward.readLine(forwardLineSensors);          // Calculate forward line position for PD error
+
+  qtrForward.readCalibrated(forwardSensors);                     // Calculate average forward line readings
+  forwardReading = averageLineReading(forwardSensors);
+  forwardReading = sma_filter(forwardReading, lineForwardPtr);
+
+  qtrLeft.readCalibrated(leftSensors);                           // Calculate left forward line readings
+  leftReading = averageLineReading(leftSensors);
+  leftReading = sma_filter(leftReading, lineLeftPtr);
+
+  qtrRight.readCalibrated(rightSensors);                         // Calculate right forward line readings
+  rightReading = averageLineReading(rightSensors);
+  rightReading = sma_filter(rightReading, lineRightPtr);
 
 }
 
@@ -102,45 +109,25 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
   int intersectionCounter = 0;
   int driveForwardDelay = 375;
 
-  delay(500);
-
   int forwardAverage = averageLineReading(forwardSensors);
   int leftAverage = averageLineReading(leftSensors);
   int rightAverage = averageLineReading(rightSensors);
-
-  lcd.clear();
-  lcd.print(leftAverage);
-  lcd.setCursor(5, 0);
-  lcd.print(forwardAverage);
-  lcd.setCursor(11, 0);
-  lcd.print(rightAverage);
 
   // If intersection on left side
   if (leftAverage > minLineValue) {
     intersectionCounter++;
     leftInt = true;
-
-    lcd.setCursor(0, 1);
-    lcd.print("X");
   }
   // If intersection on forward side
-  if (forwardAverage > minLineValue) {
+  if (forwardAverage > minLineValue + 100) {
     intersectionCounter++;
     forwardInt = true;
-
-    lcd.setCursor(8, 1);
-    lcd.print("X");
   }
   // If intersection on right side
   if (rightAverage > minLineValue) {
     intersectionCounter++;
     rightInt = true;
-
-    lcd.setCursor(15, 1);
-    lcd.print("X");
   }
-
-  delay(500);
 
   // Intersection cases
   switch (intersectionCounter) {
@@ -150,14 +137,21 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
       if (leftInt == true) {
 
-        lcd.setCursor(1, 1);
-        lcd.print("<--");
+        lcd.setCursor(0, 1);
+        lcd.print("Left!");
+
+        driveForward();
+        delay(driveForwardDelay);
         turnLeft();
 
       } else {
 
-        lcd.setCursor(12, 1);
-        lcd.print("-->");
+
+        lcd.setCursor(10, 1);
+        lcd.print("Right!");
+
+        driveForward();
+        delay(driveForwardDelay);
         turnRight();
 
       }
@@ -170,8 +164,8 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
       if (leftInt == true) {
 
-        lcd.setCursor(1, 1);
-        lcd.print("<--");
+        lcd.setCursor(0, 1);
+        lcd.print("Left!");
 
         driveForward();
         delay(driveForwardDelay);
@@ -179,8 +173,8 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
       } else {
 
-        lcd.setCursor(12, 1);
-        lcd.print("-->");
+        lcd.setCursor(10, 1);
+        lcd.print("Right!");
 
         driveForward();
         delay(driveForwardDelay);
@@ -193,43 +187,80 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
     // If three lines detected, wait for direction to turn
     case 3:
 
-      // Stall while serial data is unavailable
+      lcd.setCursor(3, 0);
+      lcd.print("Waiting...");
+      lcd.setCursor(2, 1);
+      lcd.print("Pick a shape");
+
+      // Stall while serial data from BT is unavailable
       while (!Serial1.available());
 
-      // Read incoming byte
       incomingByte = Serial1.read();
 
-      // Turn left
-      if (incomingByte == 'a') {
+      if (incomingByte == 'c' || incomingByte == 's' || incomingByte == 't' || incomingByte  == 'x') {
 
-        lcd.setCursor(1, 1);
-        lcd.print("<--");
-        delay(500);
+        lcd.clear();
+        if (incomingByte == 'c') {
+          lcd.setCursor(5, 0);
+          lcd.print("Circle");
+        } else if (incomingByte == 's') {
+          lcd.setCursor(5, 0);
+          lcd.print("Square");
+        } else if (incomingByte == 't') {
+          lcd.setCursor(4, 0);
+          lcd.print("Triangle");
+        } else if (incomingByte == 'x') {
+          lcd.setCursor(5, 0);
+          lcd.print("Cross");
+        }
 
-        driveForward();
-        delay(driveForwardDelay);
-        turnLeft();
+        Serial.print("pfcv");
+        Serial.println(incomingByte);
 
-      // Drive forward
-      } else if (incomingByte == 'w') {
+        int turnDirection  = odroidCommand();
 
-        lcd.setCursor(6, 1);
-        lcd.print("^^");
-        delay(500);
+        // Turn left
+        if (turnDirection == 1) {
 
-        driveForward();
-        delay(200);
+          lcd.setCursor(0, 1);
+          lcd.print("Left!");
+          delay(500);
 
-      // Turn right
-      } else if (incomingByte == 'd') {
+          driveForward();
+          delay(driveForwardDelay);
+          turnLeft();
 
-        lcd.setCursor(12, 1);
-        lcd.print("-->");
-        delay(500);
+          // Drive forward
+        } else if (turnDirection == 2) {
 
-        driveForward();
-        delay(driveForwardDelay);
-        turnRight();
+          lcd.setCursor(4, 1);
+          lcd.print("Straight!");
+          delay(500);
+
+          driveForward();
+          delay(200);
+
+          // Turn right
+        } else if (turnDirection == 3) {
+
+          lcd.setCursor(10, 1);
+          lcd.print("Right!");
+          delay(500);
+
+          driveForward();
+          delay(driveForwardDelay);
+          turnRight();
+
+        } else {
+          
+          lcd.setCursor(3, 1);
+          lcd.print("Not Found!");
+          delay(1000);
+          
+        }
+
+        Serial1.print("pfcv");
+        Serial1.println(incomingByte);
 
       }
 

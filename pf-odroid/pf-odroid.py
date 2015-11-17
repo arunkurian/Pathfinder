@@ -9,60 +9,82 @@ import sys
 import serial
 import time
 
-LEDCommand = 'L'
+RobotTurnCommand = 'T'
 ServoAddCommand = 'A'
 ServoSubtractCommand = 'S'
+QuitCommand = 'Q'
 
 try:
 
-	arduino = serial.Serial('/dev/tty.usbmodemfa141', 9600, timeout=0.1)
+	arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+
 	time.sleep(1)
+	arduino.write('1')
+	
+	time.sleep(1)
+	connected = arduino.read(1)
 
-	print 'Connected.'
+	if (connected == '1'): 
 
-	while True:
+		print 'Connected to Arduino.'
 
-		time.sleep(2)
+		while True:
 
-		shapes = PathfinderCV()
+			incomingCmd = arduino.read(4)
+			print incomingCmd
 
-		centroidThreshold = 5
-		
-		while not(shapes.detected):
+			if (incomingCmd == 'pfcv'):
 
-			if abs(shapes.centroidError) > centroidThreshold:
+				desiredShape = chr(int(arduino.read(3)))
+				print desiredShape
 
-				shapes.alignCamera()
-				if shapes.centroidError > 0:
-					arduino.write(ServoAddCommand + str(abs(shapes.centroidError)))
+				# Takes two modes: debug, simple
+				# Takes two OSs: mac, linux
+				shapes = PathfinderCV('debug', 'linux')
+
+				centroidThreshold = 0.5
+				
+				while not(shapes.detected):
+
+					if (abs(shapes.centroidError) > centroidThreshold):
+
+						shapes.alignCamera()
+						if shapes.centroidError > 0:
+							arduino.write(ServoAddCommand + str(abs(shapes.centroidError)))
+						else:
+							arduino.write(ServoSubtractCommand + str(abs(shapes.centroidError)))
+
+					else:
+
+						shapes.findShapes()
+
+				print "Final Set: " + ", ".join(shapes.finalSet).upper()
+
+				if (desiredShape in shapes.finalSet):
+					shapeIndex = shapes.finalSet.index(desiredShape) + 1
 				else:
-					arduino.write(ServoSubtractCommand + str(abs(shapes.centroidError)))
+					shapeIndex = 0
 
-			else:
+				print shapeIndex
+				arduino.write(RobotTurnCommand + str(shapeIndex))
+				time.sleep(1)
+				arduino.write(QuitCommand)
+				del shapes
 
-				shapes.findShapes()
+			if (incomingCmd == 'exit'):
 
-		for i in range(0, len(shapes.finalSet)):
+				break
 
-			time.sleep(1)
-
-			if (shapes.finalSet[i] == 'tri'):
-				arduino.write(LEDCommand + '1')
-			elif (shapes.finalSet[i] == 'circle'):
-				arduino.write(LEDCommand + '2')
-			elif (shapes.finalSet[i] == 'rect'):
-				arduino.write(LEDCommand + '3')
-			elif (shapes.finalSet[i] == 'cross'):
-				arduino.write(LEDCommand + '4')
-
-		# Clear shapes
-		arduino.write(LEDCommand + '0')
+	arduino.close()
+	sys.exit(1)
 
 except Exception, err:
 
 	print 'Error.'
 	print err
+	sys.exit(1)
 
 except KeyboardInterrupt: 
 
 	print 'Exited.'
+	sys.exit(1)

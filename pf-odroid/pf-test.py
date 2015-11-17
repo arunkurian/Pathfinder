@@ -11,22 +11,19 @@ try:
 
 	# Takes two modes: debug, simple
 	# Takes two OSs: mac, linux
-	shapes = PathfinderCV('simple', 'linux')
+	shapes = PathfinderCV('debug', 'linux')
 
 	centroidThreshold = 5
 	
-	while not(shapes.detected):
+	while(True):
 
-		if abs(shapes.centroidError) > centroidThreshold:
+		shapes.findShapes()
 
-			shapes.alignCamera()
-
-		else:
-
-			shapes.findShapes()
-
-	print shapes.finalSet
-	print time.time() - shapes.scriptStartTime	
+		if shapes.shapeSets:
+			if not shapes.finalSet:
+				print shapes.shapeSets[-1]	
+			else:
+				print shapes.finalSet
 
 except KeyboardInterrupt: 
 

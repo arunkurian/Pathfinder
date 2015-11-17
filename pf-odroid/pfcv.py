@@ -29,7 +29,7 @@ class PathfinderCV(object):
 			self.prepCamera()
 			
 			# Set thresholds for HSV image (Hue, Saturation, Value)
-			self.lowerHSV = np.array([140, 50, 50])
+			self.lowerHSV = np.array([135, 75, 50])
 			self.upperHSV = np.array([179, 255, 255])
 
 		# Mac OSX
@@ -149,7 +149,7 @@ class PathfinderCV(object):
 		sat = 60.0 / 256.0
 
 		# Hue
-		hue = 50.0 / 180.0
+		hue = 45.0 / 180.0
 
 		# Gain
 		gain = 15.0 / 64.0
@@ -265,7 +265,7 @@ class PathfinderCV(object):
 				cv2.circle(frame, (self.frameCx, int(signCy)), 2, (0,0,255), 2)
 			
 			# Find error in angles
-			self.centroidError = int(math.degrees(math.atan2((signCy - self.frameCy) , self.focal)))
+			self.centroidError = int(math.degrees(math.atan2((signCy - self.frameCy) , self.focal)) / 6)
 
 		return maxContour, maxRectangle, maxContourArea
 
@@ -291,11 +291,19 @@ class PathfinderCV(object):
 			if (abs(contourArea) < 100):
 				continue
 
-			# If passes point-in-contour test, less than max contour area, and has no children
-			if (abs(contourArea) < 0.75 * maxContourArea and hierarchy[0][i][2] < 0) :
+			if (maxContourArea > 100):
 
-				nestedContours.append(contours[i])
-				nestedContourAreas.append(abs(contourArea))
+				((x,y),_) = cv2.minEnclosingCircle(contours[i])
+				center = (int(x),int(y))
+
+				# Use point-in-contour test to determine location of center relative to max contour
+				inMaxContour = cv2.pointPolygonTest(maxContour, center, True)
+
+				# If passes point-in-contour test, less than max contour area, and has no children
+				if (inMaxContour > 0 and abs(contourArea) < 0.75 * maxContourArea and hierarchy[0][i][2] < 0) :
+
+					nestedContours.append(contours[i])
+					nestedContourAreas.append(abs(contourArea))
 
 		# Calculate number of nested contours
 		numContours = len(nestedContours)
@@ -343,28 +351,28 @@ class PathfinderCV(object):
 			# Circle, if the enclosing circle area error below 20% (0.2)
 			if (circleAreaError < 0.25 and rectArea > circleArea):
 				
-				iterShapes.append((relPos, 'circle'))
+				iterShapes.append((relPos, 'c'))
 				if self.mode == 'debug':
 					self.showLabel(frame, "CIRCLE", approxContour)
 
-			# Rectangle, if the bounding rectangle area error below 15% (0.15)
+			# Square, if the bounding rectangle area error below 15% (0.15)
 			elif (rectAreaError < 0.15 and circleArea > 1.5 * rectArea):
 				
-				iterShapes.append((relPos, 'rect'))
+				iterShapes.append((relPos, 's'))
 				if self.mode == 'debug':
-					self.showLabel(frame, "RECT", approxContour)
+					self.showLabel(frame, "SQR", approxContour)
 
 			# Triangle, if the bounding rectangle area error between 45% and 60% (0.45, 0.6) and vertices < 10
 			elif (rectAreaError > 0.4 and rectAreaError < 0.6 and vertices < 10):
 				
-				iterShapes.append((relPos, 'tri'))
+				iterShapes.append((relPos, 't'))
 				if self.mode == 'debug':
 					self.showLabel(frame, "TRI", approxContour)
 
 			# Triangle, if the bounding rectangle area error between 30% and 50% (0.3, 0.5) and vertices > 10
 			elif (rectAreaError > 0.3 and rectAreaError < 0.5 and vertices > 10):
 
-				iterShapes.append((relPos, 'cross'))
+				iterShapes.append((relPos, 'x'))
 				if self.mode == 'debug':
 					self.showLabel(frame, "CROSS", approxContour)
 
@@ -380,6 +388,7 @@ class PathfinderCV(object):
 			maxShapeCount = 0
 			idealShapeSets = 0
 			shapeTypes = []
+			finalTupleSet = []
 			shapeSetList = [shape for shapeSet in self.shapeSets for shape in shapeSet]
 
 			# Find max shape set size
@@ -434,14 +443,16 @@ class PathfinderCV(object):
 						# If relPos is higher than lower bound and less than upper bound, assign num
 						if (relPosition > lowerBound and relPosition < upperBound):
 
-							self.finalSet.append((num + 1, shapeType))
+							finalTupleSet.append((num + 1, shapeType))
 							break
 
-				self.finalSet.sort(key=lambda tup: tup[0])
-				self.finalSet = [shape[1] for shape in self.finalSet]
+				if finalTupleSet:				
 
-				# Return detected variable as true
-				return 1
+					finalTupleSet.sort(key=lambda tup: tup[0])
+					self.finalSet = [shape[1] for shape in finalTupleSet]
+
+					# Return detected variable as true
+					return 1
 
 	# Display labels in image frame window
 	def showLabel(self, image, label, contour):

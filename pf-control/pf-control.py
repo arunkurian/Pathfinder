@@ -22,35 +22,38 @@ class App(Frame):
 		self.frame.bind_all('<Key>', self.keypress)
 
 		# Define paned windows
-		self.control_panes = ttk.Panedwindow(self.frame, orient=HORIZONTAL)
-		self.control_panes.pack()
-		self.control_panes.pack_propagate(0)
+		self.controlPanes = ttk.Panedwindow(self.frame, orient=HORIZONTAL)
+		self.controlPanes.pack()
+		self.controlPanes.pack_propagate(0)
 
-		self.status_panes = ttk.Panedwindow(self.frame, orient=HORIZONTAL)
-		self.status_panes.pack()
-		self.status_panes.pack_propagate(0)
+		self.commandPanes = ttk.Panedwindow(self.frame, orient=HORIZONTAL)
+		self.commandPanes.pack()
+		self.commandPanes.pack_propagate(0)
 
 		# Define the label frames in each paned window
-		self.setup = ttk.Labelframe(self.control_panes, text="Setup", padding=(12, 12, 12, 12))
-		self.control_panes.add(self.setup)
-		self.control = ttk.Labelframe(self.control_panes, text="Control", padding=(12, 12, 12, 12))
-		self.control_panes.add(self.control)
+		self.setup = ttk.Labelframe(self.controlPanes, text="Setup", padding=(12, 12, 12, 12))
+		self.controlPanes.add(self.setup)
+		self.control = ttk.Labelframe(self.controlPanes, text="Control", padding=(12, 12, 12, 12))
+		self.controlPanes.add(self.control)
 
-		self.status = ttk.Labelframe(self.status_panes, text="Status", padding=(12, 12, 12, 12))
-		self.status_panes.add(self.status)
+		self.pickShapes = ttk.Labelframe(self.commandPanes, text="Pick Shapes", padding=(12, 12, 12, 12))
+		self.commandPanes.add(self.pickShapes)
+
+		self.queueShapes = ttk.Labelframe(self.commandPanes, text="Shapes Queue", padding=(12, 12, 12, 12))
+		self.commandPanes.add(self.queueShapes)
 
 		# Run create widgets procedure
-		self.create_widgets()
+		self.createWidgets()
 
-		# Run sensor status update procedure
-		self.update_status()
+		# Run shapes update procedure
+		self.updateShapes()
 
 		# Execute main loop
 		self.root.mainloop()
 
 	# Define create widgets procedure
 	# Called by __init__ to initially create widgets
-	def create_widgets(self):
+	def createWidgets(self):
 
 		# Setup Widgets
 
@@ -58,288 +61,282 @@ class App(Frame):
 		self.ports = glob.glob('/dev/tty.[A-Za-z]*')
 
 		# Port name label
-		self.port_label = ttk.Label(self.setup, text="Port", anchor=W, justify=LEFT)
-		self.port_label.grid(column=0, row=0, columnspan=2, sticky=(N, W))
+		self.portLabel = ttk.Label(self.setup, text="Port", anchor=W, justify=LEFT)
+		self.portLabel.grid(column=0, row=0, columnspan=2, sticky=(N, W))
 
 		# Port name select combobox
-		self.port_select_var = StringVar()
-		self.port_select = ttk.Combobox(self.setup, textvariable=self.port_select_var, state="readonly")
-		self.port_select['values'] = self.ports
-		self.port_select.current(2)
-		self.port_select.bind('<<ComboboxSelected>>')
-		self.port_select.grid(column=1, row=0, columnspan=2, sticky=(N, S, E, W))
+		self.portSelectVar = StringVar()
+		self.portSelect = ttk.Combobox(self.setup, textvariable=self.portSelectVar, state="readonly")
+		self.portSelect['values'] = self.ports
+		self.portSelect.current(2)
+		self.portSelect.bind('<<ComboboxSelected>>')
+		self.portSelect.grid(column=1, row=0, columnspan=2, sticky=(N, S, E, W))
 
 		# Port rate label
-		self.rate_label = ttk.Label(self.setup, text="Baud Rate", anchor=W, justify=LEFT)
-		self.rate_label.grid(column=0, row=1, sticky=(N, W))
+		self.portRateLabel = ttk.Label(self.setup, text="Baud Rate", anchor=W, justify=LEFT)
+		self.portRateLabel.grid(column=0, row=1, sticky=(N, W))
 
 		# Port rate entry 
-		self.port_rate = ttk.Entry(self.setup)
-		self.port_rate.insert(0,115200)				# Insert default value
-		self.port_rate.config(width=10)
-		self.port_rate.grid(column=1, row=1, columnspan=2, sticky=(N, S, E, W))
+		self.portRate = ttk.Entry(self.setup)
+		self.portRate.insert(0,115200)				# Insert default value
+		self.portRate.config(width=10)
+		self.portRate.grid(column=1, row=1, columnspan=2, sticky=(N, S, E, W))
 
-		# "Connect"/"Disconnect" button, executes connect_bluetooth procedure
-		self.port_button = ttk.Button(self.setup, text="Connect", command=self.connect_bluetooth)
-		self.port_button.grid(column=0, row=2, columnspan=3, sticky=(N, S, E, W))
+		# "Connect"/"Disconnect" button, executes connectBluetooth procedure
+		self.portButton = ttk.Button(self.setup, text="Connect", command=self.connectBluetooth)
+		self.portButton.grid(column=0, row=2, columnspan=3, sticky=(N, S, E, W))
 
 		# Connection results label
-		self.port_result = ttk.Label(self.setup, wraplength=250)
-		self.port_result_var = StringVar()
-		self.port_result['textvariable'] = self.port_result_var
-		self.port_result.grid(column=0, row=3, columnspan=3, sticky=(N, S, E, W))
+		self.portResult = ttk.Label(self.setup, wraplength=250)
+		self.portResultVar = StringVar()
+		self.portResult['textvariable'] = self.portResultVar
+		self.portResult.grid(column=0, row=3, columnspan=3, sticky=(N, S, E, W))
 
 		# Port connection boolean
-		self.port_connected = None
+		self.portConnected = None
 
 		# Control Widgets
 
 		# Autonomous/remote control radiobuttons
-		self.control_select_var = IntVar()			# Variable of control selection
-		self.auto_control_select = ttk.Radiobutton(self.control, text="Auto", variable=self.control_select_var, value=1, command=self.switch_control)
-		self.auto_control_select.grid(column=0, row=0, sticky=(N, S, E, W))
-		self.remote_control_select = ttk.Radiobutton(self.control, text="Remote", variable=self.control_select_var, value=0, command=self.switch_control)
-		self.remote_control_select.grid(column=2, row=0, sticky=(N, S, E, W))
+		self.controlSelectVar = IntVar()			# Variable of control selection
+		self.autoControlSelect = ttk.Radiobutton(self.control, text="Auto", variable=self.controlSelectVar, value=1, command=self.switchControl)
+		self.autoControlSelect.grid(column=0, row=0, sticky=(N, S, E, W))
+		self.remoteControlSelect = ttk.Radiobutton(self.control, text="Remote", variable=self.controlSelectVar, value=0, command=self.switchControl)
+		self.remoteControlSelect.grid(column=2, row=0, sticky=(N, S, E, W))
 
 		# Separator between control mode and remote control buttons
-		self.control_sep = ttk.Separator(self.control, orient=HORIZONTAL)
-		self.control_sep.grid(column=0, row=1, columnspan=3, sticky=(N, S, E, W), pady=12)
+		self.controlSep = ttk.Separator(self.control, orient=HORIZONTAL)
+		self.controlSep.grid(column=0, row=1, columnspan=3, sticky=(N, S, E, W), pady=12)
 
-		# Drive "Forward" button, run drive_forward prcoedure
-		self.drive_forward_button = ttk.Button(self.control, text="Forward", command=self.drive_forward, state="disabled")
-		self.drive_forward_button.grid(column=1, row=2, sticky=(N, S, E, W))
+		# Drive "Forward" button, run driveForward prcoedure
+		self.driveForwardButton = ttk.Button(self.control, text="Forward", command=self.driveForward, state="disabled")
+		self.driveForwardButton.grid(column=1, row=2, sticky=(N, S, E, W))
 		
-		# Drive "Backward" button, run drive_backward prcoedure
-		self.drive_backward_button = ttk.Button(self.control, text="Backward", command=self.drive_backward, state="disabled")
-		self.drive_backward_button.grid(column=1, row=3, sticky=(N, S, E, W))
+		# Drive "Backward" button, run driveBackward prcoedure
+		self.driveBackwardButton = ttk.Button(self.control, text="Backward", command=self.driveBackward, state="disabled")
+		self.driveBackwardButton.grid(column=1, row=3, sticky=(N, S, E, W))
 		
-		# Turn "Left" button, run turn_left prcoedure
-		self.turn_left_button = ttk.Button(self.control, text="Left", command=self.turn_left, state="disabled")
-		self.turn_left_button.grid(column=0, row=3, sticky=(N, S, E, W))
+		# Turn "Left" button, run turnLeft prcoedure
+		self.turnLeftButton = ttk.Button(self.control, text="Left", command=self.turnLeft, state="disabled")
+		self.turnLeftButton.grid(column=0, row=3, sticky=(N, S, E, W))
 		
-		# Turn "Right" button, run turn_right prcoedure
-		self.turn_right_button = ttk.Button(self.control, text="Right", command=self.turn_right, state="disabled")
-		self.turn_right_button.grid(column=2, row=3, sticky=(N, S, E, W))
+		# Turn "Right" button, run turnRight prcoedure
+		self.turnRightButton = ttk.Button(self.control, text="Right", command=self.turnRight, state="disabled")
+		self.turnRightButton.grid(column=2, row=3, sticky=(N, S, E, W))
 
 		# Status Widgets
 
-		# Initialize double variables for IR status
-		self.ir_forward_var = DoubleVar()
-		self.ir_left_var = DoubleVar()
-		self.ir_right_var = DoubleVar()
+		# Circle button
+		self.circleButton = ttk.Button(self.pickShapes, text="Circle", command=lambda: self.sendDesiredShape('c'))
+		self.circleButton.grid(column=0, row=0, sticky=(N, S, E, W))
 
-		# Initialize double variables for time
-		self.time_var = DoubleVar()
-
-		# Define status dictionary
-		self.status_vars = OrderedDict([('Forward IR', self.ir_forward_var),
-										('Left IR', self.ir_left_var), 
-										('Right IR', self.ir_right_var), 
-										('Time', self.time_var)])
-
-		# Forward IR label
-		self.ir_forward_label = ttk.Label(self.status, text="Forward IR", justify=CENTER)
-		self.ir_forward_label.grid(column=1, row=0)
-
-		# Forward IR value
-		self.ir_forward = ttk.Label(self.status,  justify=CENTER)
-		self.ir_forward['textvariable'] = self.status_vars['Forward IR']
-		self.ir_forward.grid(column=1, row=1)
-
-		# Left IR label
-		self.ir_left_label = ttk.Label(self.status, text="Left IR", justify=CENTER)
-		self.ir_left_label.grid(column=0, row=2)
-
-		# Left IR value
-		self.ir_left = ttk.Label(self.status, justify=CENTER)
-		self.ir_left['textvariable'] = self.status_vars['Left IR']
-		self.ir_left.grid(column=0, row=3)
-
-		# Right IR label
-		self.ir_right_label = ttk.Label(self.status, text="Right IR", justify=CENTER)
-		self.ir_right_label.grid(column=2, row=2)
-
-		# Right IR value
-		self.ir_right = ttk.Label(self.status, justify=CENTER)
-		self.ir_right['textvariable'] = self.status_vars['Right IR']
-		self.ir_right.grid(column=2, row=3)
+		# Square button
+		self.squareButton = ttk.Button(self.pickShapes, text="Square", command=lambda: self.sendDesiredShape('s'))
+		self.squareButton.grid(column=1, row=0, sticky=(N, S, E, W))
 		
-		# Separator between IR and other status
-		self.control_sep = ttk.Separator(self.status, orient=HORIZONTAL)
-		self.control_sep.grid(column=0, row=4, columnspan=3, sticky=(N, S, E, W), pady=12)
+		# Triangle button
+		self.triangleButton = ttk.Button(self.pickShapes, text="Triangle", command=lambda: self.sendDesiredShape('t'))
+		self.triangleButton.grid(column=2, row=0, sticky=(N, S, E, W))
+		
+		# Cross button
+		self.crossButton = ttk.Button(self.pickShapes, text="Cross", command=lambda: self.sendDesiredShape('x'))
+		self.crossButton.grid(column=3, row=0, sticky=(N, S, E, W))
 
-		# Time label
-		self.time_label = ttk.Label(self.status, text="Time", justify=LEFT)
-		self.time_label.grid(column=0, row=5)
+		# Clear button
+		self.crossButton = ttk.Button(self.pickShapes, text="Clear List", command=self.deleteShape)
+		self.crossButton.grid(column=3, row=2, sticky=(N, S, E, W))
 
-		# Time value
-		self.time = ttk.Label(self.status,  justify=RIGHT)
-		self.time['textvariable'] = self.status_vars['Time']
-		self.time.grid(column=2, row=5)
+		self.shapesList = Listbox(self.queueShapes, height=3)
+		self.shapesList.grid(column=0, row=0, sticky=(N, S, E, W))
 
 	# Define bluetooth connection procedure
 	# called when user hits "Connect" or "Disconnect"
-	def connect_bluetooth(self):
+	def connectBluetooth(self):
 				
-		# If connect_bluetooth procedure is run with intention to disconnect	
-		if (self.port_connected):
+		# If connectBluetooth procedure is run with intention to disconnect	
+		if (self.portConnected):
 
-			self.ser.flush()
+			self.arduino.flush()
 			time.sleep(1)
-			self.ser.close()
-			self.blue_port = self.port_select.get()
-			self.port_result_var.set('Disconected from ' + self.blue_port)
-			self.port_select.configure(state="readonly")
-			self.port_rate.configure(state="normal")
-			self.port_button.configure(text="Connect")
-			self.port_connected = False
-			self.remote_control(False)
+			self.arduino.close()
+			self.btPort = self.portSelect.get()
+			self.portResultVar.set('Disconected from ' + self.btPort)
+			self.portSelect.configure(state="readonly")
+			self.portRate.configure(state="normal")
+			self.portButton.configure(text="Connect")
+			self.portConnected = False
+			self.remoteControl(False)
 
-		# If connect_bluetooth procedure is run with intention to connect
+		# If connectBluetooth procedure is run with intention to connect
 		else:
 
 			# Attempt connection with the designated bluetooth serial port
 			try:
 
 				# Set serial settings and connect
-				self.blue_port = self.port_select.get()
-				self.blue_rate = self.port_rate.get()
-				self.ser = serial.Serial(self.blue_port, self.blue_rate, timeout=5)
-				self.ser.flushInput()
-				self.ser.flushOutput()
+				self.btPort = self.portSelect.get()
+				self.btRate = self.portRate.get()
+				self.arduino = serial.Serial(self.btPort, self.btRate, timeout=0.1)
 				time.sleep(1)
+				self.arduino.write('1')
 
-				# Assume connected after 1 second, change widget states, initialize time
-				self.port_result_var.set('Connected to ' + self.blue_port)
-				self.port_select.configure(state="disabled")
-				self.port_rate.configure(state="disabled")
-				self.port_button.configure(text="Disconnect")
-				self.port_connected = True
-				self.remote_control(True)
-				self.initial_time = time.time()
+				# Verify connection with handshake
+				if (self.arduino.read(1) == '1'):
+
+					self.portResultVar.set('Connected to ' + self.btPort)
+					self.portSelect.configure(state="disabled")
+					self.portRate.configure(state="disabled")
+					self.portButton.configure(text="Disconnect")
+					self.remoteControl(True)
+					self.initialTime = time.time()
+					self.arduino.flushInput()
+					self.arduino.flushOutput()
+					self.portConnected = True
 
 			# Return error if connection is not possible
 			except Exception, err:
 
-				self.port_result_var.set('Failed to connect. Try again! \n' + str(err))
+				self.portResultVar.set('Failed to connect. Try again! \n' + str(err))
 				return None
 
 	# Define switch control procedure
 	# Called when user switches between autonomous and remote control
-	def switch_control(self):
+	def switchControl(self):
 
-		if (self.port_connected):
+		if (self.portConnected):
 			
 			# Determine control mode selected
-			mode = self.control_select_var.get()
+			mode = self.controlSelectVar.get()
 
 			# Transmit control mode selected
-			self.ser.write(bytes(mode))
+			self.arduino.write(bytes(mode))
 
 			if (mode == 1):
 				# Disable remote control buttons when autonomous mode is selected
-				self.remote_control(True)
+				self.remoteControl(True)
 			else:
-				self.remote_control(False)
+				self.remoteControl(False)
 
 	# Define remote control procedure
 	# Called when remote control button states need to be changed
-	def remote_control(self, state):
+	def remoteControl(self, state):
 
 		# If under remote control, enable buttons
 		if state == True:
 
-			self.drive_forward_button.state(["!disabled"])
-			self.drive_backward_button.state(["!disabled"])
-			self.turn_left_button.state(["!disabled"])
-			self.turn_right_button.state(["!disabled"])
+			self.driveForwardButton.state(["!disabled"])
+			self.driveBackwardButton.state(["!disabled"])
+			self.turnLeftButton.state(["!disabled"])
+			self.turnRightButton.state(["!disabled"])
 
 		# If under autonomous control, disable button
 		else: 
 
-			self.drive_forward_button.state(["disabled"])
-			self.drive_backward_button.state(["disabled"])
-			self.turn_left_button.state(["disabled"])
-			self.turn_right_button.state(["disabled"])
-
-	# Define update status procedure
-	# Runs continuously after port has been connected
-	def update_status(self):
-
-		if (self.port_connected):
-			
-			# Send serial "read" byte, read line of sensor data, and create data list
-			self.ser.write('r')
-			data = self.ser.readline()
-			status = data.split(',')
-			status = map(int, status)
-
-			# Calculate elapsed time and append to status list
-			elapsed_time = round(time.time() - self.initial_time, 2)
-			status.append(elapsed_time)
-			
-			# Update status values
-			for i in range(len(self.status_vars)):
-
-				self.status_vars.values()[i].set(status[i])
-
-		# Wait for dt before running again
-		self.frame.after(200, self.update_status)
+			self.driveForwardButton.state(["disabled"])
+			self.driveBackwardButton.state(["disabled"])
+			self.turnLeftButton.state(["disabled"])
+			self.turnRightButton.state(["disabled"])
 
 	# Define drive forward procedure
 	# called when user presses "Forward" or types 'w'
-	def drive_forward(self):
+	def driveForward(self):
 
-		if (self.port_connected):
+		if (self.portConnected):
 
-			self.ser.write('w')
+			self.arduino.write('w')
 
 	# Define drive backward procedure
 	# called when user presses "Backward" or types 's'
-	def drive_backward(self):
+	def driveBackward(self):
 
-		if (self.port_connected):
+		if (self.portConnected):
 
-			self.ser.write('s')
+			self.arduino.write('s')
 
 	# Define turn left procedure
 	# called when user presses "Left" or types 'a'
-	def turn_left(self):
+	def turnLeft(self):
 
-		if (self.port_connected):
+		if (self.portConnected):
 
-			self.ser.write('a')
+			self.arduino.write('a')
 
 	# Define turn right procedure
 	# called when user presses "Right" or types 'd'
-	def turn_right(self):
+	def turnRight(self):
 
-		if (self.port_connected):
+		if (self.portConnected):
 
-			self.ser.write('d')
+			self.arduino.write('d')
+	
+	# Define update shapes procedure
+	# Runs continuously after port has been connected
+	def updateShapes(self):
+
+		if (self.portConnected and self.shapesList.size() > 0):
+
+			incomingCmd = self.arduino.read(4)
+
+			if (incomingCmd == 'pfcv'):
+
+				shape = chr(int(self.arduino.read(3)))
+
+				if (shape == 'c' or shape == 's' or shape == 't' or shape == 'x'):
+					self.deleteShape()
+
+		# Wait for dt before running again
+		self.frame.after(200, self.updateShapes)
+
+	def deleteShape(self):
+
+		last = self.shapesList.size()
+		self.shapesList.selection_clear(0, last)
+
+		self.shapesList.delete(0)
+		self.shapesList.select_set(0)
+
+	def sendDesiredShape(self, shape):
+
+		shapeType = ''
+
+		if (shape == 'c'):
+			shapeType = 'Circle'
+		elif (shape == 's'):
+			shapeType = 'Square'
+		elif (shape == 't'):
+			shapeType = 'Triangle'
+		elif (shape == 'x'):
+			shapeType = 'Cross'
+
+		self.shapesList.insert(END, shapeType)
+		self.shapesList.select_set(0)
+
+		if (self.portConnected):
+
+			self.arduino.write(shape)
 
 	# Define keystroke procedure
 	def keypress(self, event):
 
 		# 'w' is forward
 		if event.char is 'w':
-			self.drive_forward_button.focus()
-			self.drive_forward()
+			self.driveForwardButton.focus()
+			self.driveForward()
 
 		# 'a' is forward
 		elif event.char is 'a':
-			self.turn_left_button.focus()
-			self.turn_left()
+			self.turnLeftButton.focus()
+			self.turnLeft()
 
 		# 's' is forward
 		elif event.char is 's':
-			self.drive_backward_button.focus()
-			self.drive_backward()
+			self.driveBackwardButton.focus()
+			self.driveBackward()
 
 		# 'd' is forward
 		elif event.char is 'd':
-			self.turn_right_button.focus()
-			self.turn_right()
+			self.turnRightButton.focus()
+			self.turnRight()
 
 		else:
 			return None

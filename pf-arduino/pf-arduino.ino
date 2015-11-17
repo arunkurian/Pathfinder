@@ -50,17 +50,17 @@ QTRSensorsAnalog qtrRight((unsigned char[]) {    // Constructor for right line s
   5, 6, 7
 }, 3);
 
-int forwardReading;
-int leftReading;
-int rightReading;
-int forwardPos;
+int forwardPos;                // Forward 0 - 2000 position reading
+int forwardReading;            // Forward 0 - 1000 averaged sensor readings
+int leftReading;               // Left 0 - 1000 averaged sensor readings
+int rightReading;              // Right 0 - 1000 averaged sensor readings
 
 uint16_t *lineForwardPtr;       // Forward IR history pointer
 uint16_t *lineLeftPtr;          // Left IR history pointer
 uint16_t *lineRightPtr;         // Right IR history pointer
 
 int intCounter;                 // Intersection counter to wait and verify intersection points
-int minLineValue = 350;         // Minimum average line readings to detect intersection
+int minLineValue = 400;         // Minimum average line readings to detect intersection
 int steadySpeed = 50;           // Steady speed for robot
 int sensorReadCount = 0;        // Initial sensor count
 int lastError = 0;              // Initial error
@@ -73,8 +73,8 @@ Servo camServo;                 // Initialize tilt servo for camera
 // Setup Function
 void setup() {
 
-  Serial1.begin(115200);          // Begin serial communication with bluetooth
-  Serial.begin(9600);
+  Serial.begin(9600);             // Begin serial communication with ODROID
+  Serial1.begin(115200);          // Begin serial communication with Bluetooth
 
   irForwardPtr = ms_init(SMA);    // Initialize obstacle IR history pointers
   irLeftPtr = ms_init(SMA);
@@ -88,27 +88,45 @@ void setup() {
   irSideLimit = 400;              // Higher means closer
 
   camServo.attach(8);             // Set up tilt servo for camera on Pin 8
-  camServo.write(60);             // Set servo motor to 60 degrees - forward
+  camServo.write(50);             // Set servo motor to default 50 degrees
 
   qik.init();                     // Reset qik and initialize serial comms at 9600 bps
   lcd.begin(16, 2);               // Set up LCD for 16x2 display
 
-  lcd.setCursor(0, 0);            // Display introduction message
-  lcd.print("PATHFINDER");
+  lcd.setCursor(3, 0);            // Display introduction message
+  lcd.print("Pathfinder");
+
   lcd.setCursor(0, 1);
-  lcd.print("Waiting on BT...");
+  lcd.print("C1+: ");
+  lcd.setCursor(9, 1);
+  lcd.print("BT: ");
 
-  Serial1.flush();                // Flush Serial1 (BT) buffer
-  while (!Serial1.available());   // Wait until Serial1 (BT) connection is made before proceeding
+  // Pause in setup until C1+ and BT are connected
 
-  lcd.clear();                    // Clear LCD and Display "BT Connected!" message
-  lcd.setCursor(0, 0);
-  lcd.print("BT Connected!");
+  // C1+ (USB-Serial)
+  while (!Serial.available());
+
+  incomingByte = Serial.read() - '0';
+  Serial.print(incomingByte);    // Handshake
+  lcd.setCursor(5, 1);
+  lcd.print("Go!");
+
+  // BT (Serial1)
+  while (!Serial1.available());
+
+  incomingByte = Serial1.read() - '0';
+  Serial1.print(incomingByte);    // Handshake
+  lcd.setCursor(13, 1);
+  lcd.print("Go!");
+
   delay(1000);
+
+  Serial.flush();                 // Flush serial buffer
+  Serial1.flush();
 
   calibrateLineSensors();         // Run routine to calibrate line sensors
 
-  delay(2000);                    // Pause in setup to verify before going to main loop
+  delay(2000);                    // Pause in setup to verify cal before going to main loop
 
 }
 
@@ -121,38 +139,11 @@ void loop() {
   unsigned int rightSensors[3];
   unsigned int leftSensors[3];
 
-  irForwardAnalog = analogRead(A0);                              // Read forward IR sensor reading
-  irForwardAnalog = sma_filter(irForwardAnalog, irForwardPtr);   // Use simple moving average filter
+  readLines(forwardLineSensors, forwardSensors, leftSensors, rightSensors);  // Read lines
 
-  irLeftAnalog = analogRead(A1);                                 // Read left IR sensor reading
-  irLeftAnalog = sma_filter(irLeftAnalog, irLeftPtr);            // Use simple moving average filter
+  int obstacle = obstacleDetected();                                         // Determine if obstacle is detected
 
-  irRightAnalog = analogRead(A2);                                // Read right IR sensor reading
-  irRightAnalog = sma_filter(irRightAnalog, irRightPtr);         // Use simple moving average filter
-
-  int obstacle = obstacleDetected();                             // Determine if obstacle is detected
-
-  forwardPos = qtrForward.readLine(forwardLineSensors);          // Calculate forward line position for PD error
-
-  qtrForward.readCalibrated(forwardSensors);                     // Calculate average forward line readings
-  forwardReading = averageLineReading(forwardSensors);
-  forwardReading = sma_filter(forwardReading, lineForwardPtr);
-
-  qtrLeft.readCalibrated(leftSensors);                           // Calculate left forward line readings
-  leftReading = averageLineReading(leftSensors);
-  leftReading = sma_filter(leftReading, lineLeftPtr);
-
-  qtrRight.readCalibrated(rightSensors);                         // Calculate right forward line readings
-  rightReading = averageLineReading(rightSensors);
-  rightReading = sma_filter(rightReading, lineRightPtr);
-
-  // Print readings on LCD
   lcd.clear();
-  lcd.print(leftReading);
-  lcd.setCursor(5, 0);
-  lcd.print(forwardReading);
-  lcd.setCursor(11, 0);
-  lcd.print(rightReading);
 
   // Wait until atleast three reads have been completed
   if (sensorReadCount > 3) {
@@ -162,24 +153,24 @@ void loop() {
 
       // Stop at intersection, if left or right detectors exceed values
       if (leftReading > minLineValue || rightReading > minLineValue) {
-        
+
         // Wait until intersection is confirmed
         if (intCounter > 3) {
 
           // Stop
           qik.setSpeeds(0, 0);
-          
+
           // Solve intersection
           arbitrateIntersection(forwardSensors, leftSensors, rightSensors);
 
         }
-        
+
         // Iterate counter
         intCounter++;
 
-      // Drive forward along line
+        // Drive forward along line
       } else {
-        
+
         int error;
         int errorDer;
         float motorSpeed;
@@ -187,8 +178,8 @@ void loop() {
         float rightMotorCommand;
 
         // Set PD gains
-        float Kp = 0.06;
-        float Kd = 0.07;
+        float Kp = 0.085;
+        float Kd = 0.06;
 
         error = 1000 - forwardPos;                                      // Calculate error
 
@@ -208,27 +199,58 @@ void loop() {
       }
 
     } else {
-      
+
       qik.setSpeeds(0, 0);  // Stop if obstacle is detected or no path
       
+      lcd.setCursor(1, 0);
+  
+      if (obstacle == 1) {
+        lcd.print("Obstacle Left");
+      } else if (obstacle == 2) {
+        lcd.print("Obstacle Ahead");
+      } else if (obstacle == 3) {
+        lcd.print("Obstacle Right");
+      } else {
+        lcd.setCursor(5, 0);
+        lcd.print("No Path");
+      }
+
+      lcd.print("Obstacle Found");
+      lcd.setCursor(4, 1);
+      lcd.print("Stopped!");
+
     }
 
   }
 
   // Iterate sensor count
   sensorReadCount++;
-
 }
 
 // Obstacle detection function
 int obstacleDetected() {
-  
+
+  irForwardAnalog = analogRead(A0);                              // Read forward IR sensor reading
+  irForwardAnalog = sma_filter(irForwardAnalog, irForwardPtr);   // Use simple moving average filter
+
+  irLeftAnalog = analogRead(A1);                                 // Read left IR sensor reading
+  irLeftAnalog = sma_filter(irLeftAnalog, irLeftPtr);            // Use simple moving average filter
+
+  irRightAnalog = analogRead(A2);                                // Read right IR sensor reading
+  irRightAnalog = sma_filter(irRightAnalog, irRightPtr);         // Use simple moving average filter
+
   // If forward, left, or right IRs detect an obstacle, set flag
-  if (irForwardAnalog > irForwardLimit || irLeftAnalog > irSideLimit || irRightAnalog > irSideLimit) {
+  if (irForwardAnalog > irForwardLimit) {
+    return 2;
+  }
+  else if (irLeftAnalog > irSideLimit) {
     return 1;
+  }
+  else if (irRightAnalog > irSideLimit) {
+    return 3;
   }
   else {
     return 0;
   }
-  
+
 }
