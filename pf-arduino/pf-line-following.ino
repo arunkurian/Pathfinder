@@ -20,8 +20,10 @@ void calibrateLineSensors() {
   lcd.print("Pathfinder");
   lcd.setCursor(0, 1);
   lcd.print("Calibrating ");
+  lcd.setCursor(15, 1);
+  lcd.print("%");
 
-  // Drive forward slowly open loop
+  // Spin counterclockwise slowly open loop
   qik.setSpeeds(-30, -30);
 
   // Calibrate for 1.25 seconds
@@ -37,7 +39,6 @@ void calibrateLineSensors() {
     percent = 100 * i /  (numIterations - 1);
     percent = percent / 2.0;
     lcd.print((int)percent);
-    lcd.print("%");
 
     delay(10);
   }
@@ -45,7 +46,7 @@ void calibrateLineSensors() {
   // Stop
   qik.setSpeeds(0, 0);
 
-  // Drive backward slowly open loop
+  // Spin clockwise slowly open loop
   qik.setSpeeds(30, 30);
 
   // Calibrate for 1.25 seconds
@@ -61,7 +62,6 @@ void calibrateLineSensors() {
     percent = 100 * i / (numIterations - 1);
     percent = percent / 2.0 + 50.0;
     lcd.print((int)percent);
-    lcd.print("%");
 
     delay(10);
   }
@@ -107,7 +107,6 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
   boolean rightInt = false;
 
   int intersectionCounter = 0;
-  int driveForwardDelay = 375;
 
   int forwardAverage = averageLineReading(forwardSensors);
   int leftAverage = averageLineReading(leftSensors);
@@ -129,64 +128,70 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
     rightInt = true;
   }
 
+  // If shape not previously found, look at next on list
+  if (notFound == 1) {
+    intersectionCounter = 3;
+  }
+
   // Intersection cases
   switch (intersectionCounter) {
 
     // One line detected, turn in direction of line detected
     case 1:
 
+      // Turn left
       if (leftInt == true) {
 
         lcd.setCursor(0, 1);
-        lcd.print("Left!");
+        lcd.print("Left ");
 
-        driveForward();
-        delay(driveForwardDelay);
         turnLeft();
 
+      // Turn right
       } else {
 
+        lcd.setCursor(0, 1);
+        lcd.print("Right");
 
-        lcd.setCursor(10, 1);
-        lcd.print("Right!");
-
-        driveForward();
-        delay(driveForwardDelay);
         turnRight();
 
       }
+      
+      delay(100);
 
       break;
 
     // Two lines detected, turn in left direction if true, or right direction if true
     // Assumes no forward dead ends
     case 2:
-
+    
+      // Turn left
       if (leftInt == true) {
 
         lcd.setCursor(0, 1);
-        lcd.print("Left!");
+        lcd.print("Left ");
 
-        driveForward();
-        delay(driveForwardDelay);
         turnLeft();
 
+      // Turn right
       } else {
 
-        lcd.setCursor(10, 1);
-        lcd.print("Right!");
+        lcd.setCursor(0, 1);
+        lcd.print("Right");
 
-        driveForward();
-        delay(driveForwardDelay);
         turnRight();
 
       }
+      
+      delay(100);
 
       break;
 
     // If three lines detected, wait for direction to turn
     case 3:
-
+    
+      lcd.clear();
+      
       lcd.setCursor(3, 0);
       lcd.print("Waiting...");
       lcd.setCursor(2, 1);
@@ -200,17 +205,14 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
       if (incomingByte == 'c' || incomingByte == 's' || incomingByte == 't' || incomingByte  == 'x') {
 
         lcd.clear();
+        
         if (incomingByte == 'c') {
-          lcd.setCursor(5, 0);
           lcd.print("Circle");
         } else if (incomingByte == 's') {
-          lcd.setCursor(5, 0);
           lcd.print("Square");
         } else if (incomingByte == 't') {
-          lcd.setCursor(4, 0);
           lcd.print("Triangle");
         } else if (incomingByte == 'x') {
-          lcd.setCursor(5, 0);
           lcd.print("Cross");
         }
 
@@ -219,48 +221,55 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
         int turnDirection  = odroidCommand();
 
-        // Turn left
-        if (turnDirection == 1) {
+        // Shape not found
+        if (turnDirection == 0) {
 
           lcd.setCursor(0, 1);
-          lcd.print("Left!");
-          delay(500);
+          lcd.print("Not Found");
+          delay(1000);
 
-          driveForward();
-          delay(driveForwardDelay);
-          turnLeft();
-
-          // Drive forward
-        } else if (turnDirection == 2) {
-
-          lcd.setCursor(4, 1);
-          lcd.print("Straight!");
-          delay(500);
-
-          driveForward();
-          delay(200);
-
-          // Turn right
-        } else if (turnDirection == 3) {
-
-          lcd.setCursor(10, 1);
-          lcd.print("Right!");
-          delay(500);
-
-          driveForward();
-          delay(driveForwardDelay);
-          turnRight();
+          notFound = 1;
+          
+          Serial1.print("pfcv");
+          Serial1.println(incomingByte);
 
         } else {
-          
-          lcd.setCursor(3, 1);
-          lcd.print("Not Found!");
-          delay(1000);
-          
-        }
 
-        Serial1.print("pfcv");
-        Serial1.println(incomingByte);
+          // Turn left
+          if (turnDirection == 1) {
+
+            lcd.setCursor(0, 1);
+            lcd.print("Left");
+            delay(500);
+
+            turnLeft();
+
+            // Drive forward
+          } else if (turnDirection == 2) {
+
+            lcd.setCursor(0, 1);
+            lcd.print("Ahead");
+            delay(500);
+
+            driveForward();
+
+            // Turn right
+          } else if (turnDirection == 3) {
+
+            lcd.setCursor(0, 1);
+            lcd.print("Right");
+            delay(500);
+
+            turnRight();
+
+          }
+          
+          notFound = 0;
+
+          Serial1.print("pfcv");
+          Serial1.println(incomingByte);
+
+        }
 
       }
 
@@ -278,17 +287,19 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 void driveForward() {
 
   // Drive forward at steady speed
-  qik.setSpeeds(steadySpeed, -steadySpeed);
-  delay(100);
+  qik.setSpeeds(40, -40);
+  delay(600);
 
 }
 
 // Turn left function
 void turnLeft() {
 
-  // Turn left for 400 ms
-  qik.setSpeeds(-steadySpeed, -steadySpeed);
-  delay(400);
+  driveForward();
+
+  // Turn left for 200 ms
+  qik.setSpeeds(-40, -40);
+  delay(200);
 
   // Determine forward line average
   unsigned int sensors[3];
@@ -298,7 +309,7 @@ void turnLeft() {
   // Turn left until forward line average above some minimum value
   while (forwardLine < minLineValue + 100) {
 
-    qik.setSpeeds(-steadySpeed, -steadySpeed);
+    qik.setSpeeds(-40, -40);
 
     qtrForward.readCalibrated(sensors);
     forwardLine = averageLineReading(sensors);
@@ -310,9 +321,11 @@ void turnLeft() {
 // Turn right function
 void turnRight() {
 
-  // Turn right for 400 ms
-  qik.setSpeeds(steadySpeed, steadySpeed);
-  delay(400);
+  driveForward();
+
+  // Turn right for 200 ms
+  qik.setSpeeds(40, 40);
+  delay(200);
 
   // Determine forward line average
   unsigned int sensors[3];
@@ -322,7 +335,7 @@ void turnRight() {
   // Turn right until forward line average above some minimum value
   while (forwardLine < minLineValue + 100) {
 
-    qik.setSpeeds(steadySpeed, steadySpeed);
+    qik.setSpeeds(40, 40);
 
     qtrForward.readCalibrated(sensors);
     forwardLine = averageLineReading(sensors);
@@ -364,5 +377,33 @@ int minLineReading(unsigned int sensorReadings[]) {
   }
 
   return minReading;
+
+}
+
+void switchProfile(int profile) {
+
+  if (profile == 1) {
+
+    steadySpeed = 65;
+    Kp = 0.095;
+    Kd = 0.09;
+
+    lcd.setCursor(11, 0);
+    lcd.print("Green");
+    lcd.setCursor(12, 1);
+    lcd.print("Fast");
+    
+  } else if (profile == 0) {
+
+    steadySpeed = 45;
+    Kp = 0.085;
+    Kd = 0.065;
+    
+    lcd.setCursor(12, 0);
+    lcd.print("Pink");
+    lcd.setCursor(12, 1);
+    lcd.print("Slow");
+
+  }
 
 }

@@ -16,6 +16,7 @@ int odroidCommand() {
   int currentPos, newPos, difference;
   int sweepDiff = -1;
   int turnPos = 0;
+  int speedProfile = 0;
   
   camServo.write(defaultServo);             // Set servo motor to default 50 degrees
   currentPos = defaultServo;
@@ -69,6 +70,14 @@ int odroidCommand() {
       case 'T': // Turn direction value (1 = Left, 2 = Straight, 3 = Right)
         {
           turnPos = Serial.parseInt();
+          break;
+        }
+      case 'C': // Speed value (1 = Fast profile, 0 = Slow profile)
+        {
+          speedProfile = Serial.parseInt();
+          if (turnPos != 0) {
+            switchProfile(speedProfile);
+          }
           break;
         }
       case 'Q': // Shape classification complete, exit loop

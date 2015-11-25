@@ -60,8 +60,16 @@ uint16_t *lineLeftPtr;          // Left IR history pointer
 uint16_t *lineRightPtr;         // Right IR history pointer
 
 int intCounter;                 // Intersection counter to wait and verify intersection points
-int minLineValue = 400;         // Minimum average line readings to detect intersection
-int steadySpeed = 50;           // Steady speed for robot
+int minLineValue = 350;         // Minimum average line readings to detect intersection
+
+int steadySpeed;                // Steady speed for robot
+int driveDelay;                 // Drive delay for turns
+
+float Kp;                       // PD gains 
+float Kd;
+
+int notFound = 0;
+
 int sensorReadCount = 0;        // Initial sensor count
 int lastError = 0;              // Initial error
 
@@ -85,7 +93,7 @@ void setup() {
   lineRightPtr = ms_init(SMA);
 
   irForwardLimit = 300;           // Set IR limits for analog reading
-  irSideLimit = 400;              // Higher means closer
+  irSideLimit = 500;              // Higher means closer
 
   camServo.attach(8);             // Set up tilt servo for camera on Pin 8
   camServo.write(50);             // Set servo motor to default 50 degrees
@@ -93,6 +101,9 @@ void setup() {
   qik.init();                     // Reset qik and initialize serial comms at 9600 bps
   lcd.begin(16, 2);               // Set up LCD for 16x2 display
 
+  switchProfile(0);
+  
+  lcd.clear();
   lcd.setCursor(3, 0);            // Display introduction message
   lcd.print("Pathfinder");
 
@@ -127,7 +138,7 @@ void setup() {
   calibrateLineSensors();         // Run routine to calibrate line sensors
 
   delay(2000);                    // Pause in setup to verify cal before going to main loop
-
+randomSeed(analogRead(0));
 }
 
 
@@ -141,9 +152,8 @@ void loop() {
 
   readLines(forwardLineSensors, forwardSensors, leftSensors, rightSensors);  // Read lines
 
+  camServo.write(50);
   int obstacle = obstacleDetected();                                         // Determine if obstacle is detected
-
-  lcd.clear();
 
   // Wait until atleast three reads have been completed
   if (sensorReadCount > 3) {
@@ -152,7 +162,7 @@ void loop() {
     if (forwardReading < 1000 && forwardReading > 0 && obstacle == 0) {
 
       // Stop at intersection, if left or right detectors exceed values
-      if (leftReading > minLineValue || rightReading > minLineValue) {
+      if (leftReading > minLineValue || rightReading > minLineValue || notFound == 1) {
 
         // Wait until intersection is confirmed
         if (intCounter > 3) {
@@ -177,10 +187,6 @@ void loop() {
         float leftMotorCommand;
         float rightMotorCommand;
 
-        // Set PD gains
-        float Kp = 0.085;
-        float Kd = 0.06;
-
         error = 1000 - forwardPos;                                      // Calculate error
 
         errorDer = error - lastError;                                   // Calculate error derivative
@@ -201,23 +207,6 @@ void loop() {
     } else {
 
       qik.setSpeeds(0, 0);  // Stop if obstacle is detected or no path
-      
-      lcd.setCursor(1, 0);
-  
-      if (obstacle == 1) {
-        lcd.print("Obstacle Left");
-      } else if (obstacle == 2) {
-        lcd.print("Obstacle Ahead");
-      } else if (obstacle == 3) {
-        lcd.print("Obstacle Right");
-      } else {
-        lcd.setCursor(5, 0);
-        lcd.print("No Path");
-      }
-
-      lcd.print("Obstacle Found");
-      lcd.setCursor(4, 1);
-      lcd.print("Stopped!");
 
     }
 

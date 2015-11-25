@@ -12,42 +12,18 @@ import math
 class PathfinderCV(object):
 
 	# Initialize the PathfinderCV instance, prepare and start video capture
-	def __init__(self, mode, os):
+	def __init__(self, mode, camSource, camHue):
 
 		self.mode = mode
 
 		# Set script start time
 		self.scriptStartTime = time.time()
 
-		# Linux
-		if os == 'linux':
+		# Video capture
+		self.cap = cv2.VideoCapture(camSource)
 
-			# Video capture
-			self.cap = cv2.VideoCapture(1)
-
-			# Setup camera
-			self.prepCamera()
-			
-			# Set thresholds for HSV image (Hue, Saturation, Value)
-			self.lowerHSV = np.array([135, 75, 50])
-			self.upperHSV = np.array([179, 255, 255])
-
-		# Mac OSX
-		if os == 'mac':
-
-			# Video capture
-			self.cap = cv2.VideoCapture(0)
-
-			# Center of the frame
-			self.frameCx = int(639.5 / 2.0)
-			self.frameCy = int(479.5 / 2.0)
-
-			# Focal lengths in pixels
-			self.focal = (5.5933430628532710e+02) / 2.0
-
-			# Set thresholds for HSV image (Hue, Saturation, Value)
-			self.lowerHSV = np.array([150, 100, 100])
-			self.upperHSV = np.array([179, 255, 255])
+		# Setup camera with given hue
+		self.prepCamera(camHue)
 
 		# Arbitrary initial value for centroid error
 		self.centroidError = 100
@@ -76,8 +52,10 @@ class PathfinderCV(object):
 		# Capture frame
 		_, frame = self.cap.read()
 
+		# self.findColor(frame)
+
 		# Prepare frame with Gaussian blurring, HSV conversion, and Canny edge detection
-		preppedFrame = self.prepFrame(frame, self.lowerHSV, self.upperHSV)
+		preppedFrame = self.prepFrame(frame)
 
 		# Find the all contours 
 		contours, hierarchy = cv2.findContours(preppedFrame.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -87,6 +65,10 @@ class PathfinderCV(object):
 
 			# Define bounding box
 			maxContour, maxRectangle, maxContourArea = self.detectBoundary(frame, contours)
+
+			if not maxRectangle:
+				
+				self.flipColor()
 
 		if self.mode == 'debug':
 
@@ -105,7 +87,7 @@ class PathfinderCV(object):
 		_, frame = self.cap.read()
 
 		# Prepare frame with Gaussian blurring, HSV conversion, and Canny edge detection
-		preppedFrame = self.prepFrame(frame, self.lowerHSV, self.upperHSV)
+		preppedFrame = self.prepFrame(frame)
 	
 		# Find the all contours 
 		contours, hierarchy = cv2.findContours(preppedFrame.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -117,10 +99,14 @@ class PathfinderCV(object):
 			maxContour, maxRectangle, maxContourArea = self.detectBoundary(frame, contours)
 
 			# If a bounding box has been found
-			if maxContourArea > 100:
+			if maxRectangle:
 
 				# Identify all nested shapes
 				self.detected = self.detectNestedShapes(frame, contours, hierarchy, maxContour, maxRectangle, maxContourArea)
+
+			else: 
+
+				self.centroidError = 100
 
 		if self.mode == 'debug':
 
@@ -132,12 +118,15 @@ class PathfinderCV(object):
 		cv2.waitKey(1)
 
 	# Setup the Playstation Eye camera with manual capture settings
-	def prepCamera(self):
+	def prepCamera(self, camHue):
 
 		# Set up camera frame size and rate for 320x240 at 30fps
 		self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, 320)
 		self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, 240)
 		self.cap.set(cv2.cv.CV_CAP_PROP_FPS, 30)
+
+		# Hue (Home)
+		hue = camHue / 180.0
 
 		# Brightness
 		brightness = 0.0 / 256.0
@@ -148,17 +137,14 @@ class PathfinderCV(object):
 		# Saturation
 		sat = 60.0 / 256.0
 
-		# Hue
-		hue = 45.0 / 180.0
-
 		# Gain
 		gain = 15.0 / 64.0
 		
 		# Set up the camera color
+		self.cap.set(cv2.cv.CV_CAP_PROP_HUE, hue)
 		self.cap.set(cv2.cv.CV_CAP_PROP_BRIGHTNESS, brightness)
 		self.cap.set(cv2.cv.CV_CAP_PROP_CONTRAST, contrast)
 		self.cap.set(cv2.cv.CV_CAP_PROP_SATURATION, sat)
-		self.cap.set(cv2.cv.CV_CAP_PROP_HUE, hue)
 		self.cap.set(cv2.cv.CV_CAP_PROP_GAIN, gain)
 
 		# Center of the frame
@@ -170,7 +156,7 @@ class PathfinderCV(object):
 
     # Take an individual frame and utilize Gaussian blurring, BGR-to-HSV color conversion, range thresholding, 
     # morphological transformation, and canny edge detection methods to prepare the frame for contour detection
-	def prepFrame(self, frame, lowerHSV, upperHSV):
+	def prepFrame(self, frame):
 
 		# Blur image before Canny edge detection
 		blurKernelSize = 3
@@ -180,10 +166,10 @@ class PathfinderCV(object):
 		imgHSV = cv2.cvtColor(imgBlur, cv2.COLOR_BGR2HSV)
 
 		# Create mask from HSV thresholds
-		imgRangeMask = cv2.inRange(imgHSV, lowerHSV, upperHSV)
+		imgRangeMask = cv2.inRange(imgHSV, self.lowerHSV, self.upperHSV)
 
 		# Morphological transformations
-		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
 		imgMask = cv2.morphologyEx(imgRangeMask, cv2.MORPH_OPEN, kernel)
 
 		# Use Canny edge detection to capture the edges of the shapes
@@ -208,6 +194,22 @@ class PathfinderCV(object):
 
 		# Return Canny edges to main
 		return preppedFrame
+
+	def flipColor(self):
+
+		if (set(self.lowerHSV) == set(self.pinkLowerHSV)):
+
+			self.lowerHSV = self.greenLowerHSV
+			self.upperHSV = self.greenUpperHSV
+
+			self.signColor = 1
+
+		else: 
+
+			self.lowerHSV = self.pinkLowerHSV
+			self.upperHSV = self.pinkUpperHSV
+
+			self.signColor = 0
 
 	# Given a frame and contours found in that frame, determine the contour with the maximum area and 
 	# an aspect ratio > 1.5, as this will likely correspond to the sign. Find the centroid of the contour 
@@ -291,7 +293,7 @@ class PathfinderCV(object):
 			if (abs(contourArea) < 100):
 				continue
 
-			if (maxContourArea > 100):
+			if (maxRectangle):
 
 				((x,y),_) = cv2.minEnclosingCircle(contours[i])
 				center = (int(x),int(y))
@@ -308,151 +310,141 @@ class PathfinderCV(object):
 		# Calculate number of nested contours
 		numContours = len(nestedContours)
 
-		# Identify shape type for each of the nested contours
-		for contour, contourArea in zip(nestedContours, nestedContourAreas):
+		if (numContours == self.numIntersections):
+		
+			# Identify shape type for each of the nested contours
+			for contour, contourArea in zip(nestedContours, nestedContourAreas):
 
-			# Approximate the contour with accuracy proportional to contour perimeter
-			approxContour = cv2.approxPolyDP(contour, 
-				cv2.arcLength(contour, True) * 0.02,
-				True)
+				# Approximate the contour with accuracy proportional to contour perimeter
+				approxContour = cv2.approxPolyDP(contour, 
+					cv2.arcLength(contour, True) * 0.02,
+					True)
 
-			# Calculate the number of vertices
-			vertices = len(approxContour)
+				# Calculate the number of vertices
+				vertices = len(approxContour)
 
-			# Evaluate minimum enclosing circle around contour
-			(x,y), radius = cv2.minEnclosingCircle(approxContour)
-			center = (int(x),int(y))
-			radius = int(radius)
+				# Evaluate minimum enclosing circle around contour
+				(x,y), radius = cv2.minEnclosingCircle(approxContour)
+				center = (int(x),int(y))
+				radius = int(radius)
 
-			# Calculate enclosing circle area
-			circleArea = 3.14 * radius * radius
+				# Calculate enclosing circle area
+				circleArea = 3.14 * radius * radius
 
-			# Evaluate the minimum area rectangle around contour
-			rect = cv2.minAreaRect(approxContour)
-			rectBox = cv2.cv.BoxPoints(rect)
-			rectBox = np.int0(rectBox)
-			rectArea = cv2.contourArea(rectBox)
+				# Evaluate the minimum area rectangle around contour
+				rect = cv2.minAreaRect(approxContour)
+				rectBox = cv2.cv.BoxPoints(rect)
+				rectBox = np.int0(rectBox)
+				rectArea = cv2.contourArea(rectBox)
 
-			# Calculate area error between contour and min enclosing circle
-			circleAreaError = abs(1 - (contourArea / circleArea))
+				# Calculate area error between contour and min enclosing circle
+				circleAreaError = abs(1 - (contourArea / circleArea))
 
-			# Calculate area error between contour and min area rectangle
-			rectAreaError = abs(1 - (contourArea / rectArea))
+				# Calculate area error between contour and min area rectangle
+				rectAreaError = abs(1 - (contourArea / rectArea))
 
-			if self.mode == 'debug':
-
-				# Draw bounding circle (green) and rectangle (blue) shapes
-				cv2.circle(frame, center, radius, (0,255,0), 2)
-				cv2.drawContours(frame, [rectBox], 0, (255,0,0), 2)
-
-			# Find relative position in max rectangle
-			relPos = round(float(center[0] - maxRectangle[0]) / maxRectangle[2], 2)
-
-			# Circle, if the enclosing circle area error below 20% (0.2)
-			if (circleAreaError < 0.25 and rectArea > circleArea):
-				
-				iterShapes.append((relPos, 'c'))
 				if self.mode == 'debug':
-					self.showLabel(frame, "CIRCLE", approxContour)
 
-			# Square, if the bounding rectangle area error below 15% (0.15)
-			elif (rectAreaError < 0.15 and circleArea > 1.5 * rectArea):
-				
-				iterShapes.append((relPos, 's'))
-				if self.mode == 'debug':
-					self.showLabel(frame, "SQR", approxContour)
+					# Draw bounding circle (green) and rectangle (blue) shapes
+					cv2.circle(frame, center, radius, (0,255,0), 2)
+					cv2.drawContours(frame, [rectBox], 0, (255,0,0), 2)
 
-			# Triangle, if the bounding rectangle area error between 45% and 60% (0.45, 0.6) and vertices < 10
-			elif (rectAreaError > 0.4 and rectAreaError < 0.6 and vertices < 10):
-				
-				iterShapes.append((relPos, 't'))
-				if self.mode == 'debug':
-					self.showLabel(frame, "TRI", approxContour)
+				# Find relative position in max rectangle
+				relPos = round(float(center[0] - maxRectangle[0]) / maxRectangle[2], 2)
 
-			# Triangle, if the bounding rectangle area error between 30% and 50% (0.3, 0.5) and vertices > 10
-			elif (rectAreaError > 0.3 and rectAreaError < 0.5 and vertices > 10):
+				# Circle, if the enclosing circle area error below 20% (0.2)
+				if (circleAreaError < 0.25 and rectArea > circleArea):
+					
+					iterShapes.append((relPos, 'c'))
+					if self.mode == 'debug':
+						self.showLabel(frame, "CIRCLE", approxContour)
 
-				iterShapes.append((relPos, 'x'))
-				if self.mode == 'debug':
-					self.showLabel(frame, "CROSS", approxContour)
+				# Square, if the bounding rectangle area error below 15% (0.15)
+				elif (rectAreaError < 0.2 and circleArea > 1.5 * rectArea):
+					
+					iterShapes.append((relPos, 's'))
+					if self.mode == 'debug':
+						self.showLabel(frame, "SQR", approxContour)
 
-		# If number of contours > 0 and equal to shape list
-		if (numContours > 0 and len(iterShapes) >= numContours):
+				# Triangle, if the bounding rectangle area error between 45% and 60% (0.45, 0.6) and vertices < 10
+				elif (rectAreaError > 0.4 and rectAreaError < 0.6 and vertices < 10):
+					
+					iterShapes.append((relPos, 't'))
+					if self.mode == 'debug':
+						self.showLabel(frame, "TRI", approxContour)
+
+				# Triangle, if the bounding rectangle area error between 30% and 50% (0.3, 0.5) and vertices > 10
+				elif (rectAreaError > 0.3 and rectAreaError < 0.5 and vertices > 10):
+
+					iterShapes.append((relPos, 'x'))
+					if self.mode == 'debug':
+						self.showLabel(frame, "CROSS", approxContour)
 
 			# Add iteration shape list to master shape list
 			self.shapeSets.append(iterShapes)
 
-		# Calculate final set once atleast 10 sets have been added
-		if (len(self.shapeSets) > 10):
+			# Calculate final set once atleast 10 sets have been added
+			if (len(self.shapeSets) > 10):
 
-			maxShapeCount = 0
-			idealShapeSets = 0
-			shapeTypes = []
-			finalTupleSet = []
-			shapeSetList = [shape for shapeSet in self.shapeSets for shape in shapeSet]
+				idealShapeSets = 0
+				shapeTypes = []
+				finalTupleSet = []
+				shapeSetList = [shape for shapeSet in self.shapeSets for shape in shapeSet]
 
-			# Find max shape set size
-			for shapeSet in self.shapeSets:
+				# Define ideal sets as those with length equal to max shape set size
+				for shapeSet in self.shapeSets:
 
-				shapeSetSize = len(shapeSet)
+					if len(shapeSet) == self.numIntersections:
+						idealShapeSets = idealShapeSets + 1
 
-				if shapeSetSize > maxShapeCount:
-					maxShapeCount = shapeSetSize
+				# If count of the ideal sets > 10
+				if (idealShapeSets > 10):
 
-			# Define ideal sets as those with length equal to max shape set size
-			for shapeSet in self.shapeSets:
-
-				if len(shapeSet) == maxShapeCount:
-					idealShapeSets = idealShapeSets + 1
-
-			# If count of the ideal sets > 10
-			if (idealShapeSets > 10):
-
-				# For each shape, add to shape types list
-				for shape in shapeSetList:
-
-					_, shapeType = shape
-
-					if shapeType not in shapeTypes:
-						shapeTypes.append(shapeType)
-
-					if len(shapeTypes) == maxShapeCount:
-						break
-
-				# For each shape type, average positions and determine relative positions
-				for shapeType in shapeTypes:
-
-					relPositions = []
-
+					# For each shape, add to shape types list
 					for shape in shapeSetList:
 
-						relPos, shapePosType = shape
+						_, shapeType = shape
 
-						if shapePosType == shapeType:
-							relPositions.append(relPos)
+						if shapeType not in shapeTypes:
+							shapeTypes.append(shapeType)
 
-					# Average relative positions found for this shape type
-					relPosition = sum(relPositions) / len(relPositions)
-
-					# Find the integer position of the contour
-					for num in range(0, maxShapeCount):
-
-						lowerBound = num / float(maxShapeCount)
-						upperBound = (num + 1) / float(maxShapeCount)
-
-						# If relPos is higher than lower bound and less than upper bound, assign num
-						if (relPosition > lowerBound and relPosition < upperBound):
-
-							finalTupleSet.append((num + 1, shapeType))
+						if len(shapeTypes) == self.numIntersections:
 							break
 
-				if finalTupleSet:				
+					# For each shape type, average positions and determine relative positions
+					for shapeType in shapeTypes:
 
-					finalTupleSet.sort(key=lambda tup: tup[0])
-					self.finalSet = [shape[1] for shape in finalTupleSet]
+						relPositions = []
 
-					# Return detected variable as true
-					return 1
+						for shape in shapeSetList:
+
+							relPos, shapePosType = shape
+
+							if shapePosType == shapeType:
+								relPositions.append(relPos)
+
+						# Average relative positions found for this shape type
+						relPosition = sum(relPositions) / len(relPositions)
+
+						# Find the integer position of the contour
+						for num in range(0, self.numIntersections):
+
+							lowerBound = num / float(self.numIntersections)
+							upperBound = (num + 1) / float(self.numIntersections)
+
+							# If relPos is higher than lower bound and less than upper bound, assign num
+							if (relPosition > lowerBound and relPosition < upperBound):
+
+								finalTupleSet.append((num + 1, shapeType))
+								break
+
+					if finalTupleSet:				
+
+						finalTupleSet.sort(key=lambda tup: tup[0])
+						self.finalSet = [shape[1] for shape in finalTupleSet]
+
+						# Return detected variable as true
+						return 1
 
 	# Display labels in image frame window
 	def showLabel(self, image, label, contour):
