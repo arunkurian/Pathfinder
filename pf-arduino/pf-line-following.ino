@@ -4,7 +4,7 @@
 
   Line following functions. Calibration and intersection resolution.
 
-  modified 9 Nov 2015
+  modified 1 Dec 2015
   by Arun Kurian
  */
 
@@ -231,13 +231,17 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
           notFound = 1;
           
           Serial1.print("pfcv");
-          Serial1.println(incomingByte);
+          Serial1.println('0');
 
         } else {
+          
+          Serial1.print("pfcv");
 
           // Turn left
           if (turnDirection == 1) {
-
+            
+            Serial1.println('1');
+            
             lcd.setCursor(0, 1);
             lcd.print("Left");
             delay(500);
@@ -246,6 +250,8 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
             // Drive forward
           } else if (turnDirection == 2) {
+            
+            Serial1.println('2');
 
             lcd.setCursor(0, 1);
             lcd.print("Ahead");
@@ -255,6 +261,8 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 
             // Turn right
           } else if (turnDirection == 3) {
+            
+            Serial1.println('3');
 
             lcd.setCursor(0, 1);
             lcd.print("Right");
@@ -265,9 +273,6 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
           }
           
           notFound = 0;
-
-          Serial1.print("pfcv");
-          Serial1.println(incomingByte);
 
         }
 
@@ -287,18 +292,20 @@ void arbitrateIntersection(unsigned int forwardSensors[], unsigned int leftSenso
 void driveForward() {
 
   // Drive forward at steady speed
-  qik.setSpeeds(40, -40);
-  delay(600);
+  qik.setSpeeds(steadySpeed, -steadySpeed);
+  delay(200);
 
 }
 
 // Turn left function
 void turnLeft() {
 
-  driveForward();
+  // Move forward
+  qik.setSpeeds(50, -50);
+  delay(500);
 
   // Turn left for 200 ms
-  qik.setSpeeds(-40, -40);
+  qik.setSpeeds(-50, -50);
   delay(200);
 
   // Determine forward line average
@@ -309,7 +316,7 @@ void turnLeft() {
   // Turn left until forward line average above some minimum value
   while (forwardLine < minLineValue + 100) {
 
-    qik.setSpeeds(-40, -40);
+    qik.setSpeeds(-50, -50);
 
     qtrForward.readCalibrated(sensors);
     forwardLine = averageLineReading(sensors);
@@ -321,10 +328,12 @@ void turnLeft() {
 // Turn right function
 void turnRight() {
 
-  driveForward();
-
+  // Move forward
+  qik.setSpeeds(50, -50);
+  delay(500);
+  
   // Turn right for 200 ms
-  qik.setSpeeds(40, 40);
+  qik.setSpeeds(50, 50);
   delay(200);
 
   // Determine forward line average
@@ -335,7 +344,7 @@ void turnRight() {
   // Turn right until forward line average above some minimum value
   while (forwardLine < minLineValue + 100) {
 
-    qik.setSpeeds(40, 40);
+    qik.setSpeeds(50, 50);
 
     qtrForward.readCalibrated(sensors);
     forwardLine = averageLineReading(sensors);
@@ -377,33 +386,5 @@ int minLineReading(unsigned int sensorReadings[]) {
   }
 
   return minReading;
-
-}
-
-void switchProfile(int profile) {
-
-  if (profile == 1) {
-
-    steadySpeed = 65;
-    Kp = 0.095;
-    Kd = 0.09;
-
-    lcd.setCursor(11, 0);
-    lcd.print("Green");
-    lcd.setCursor(12, 1);
-    lcd.print("Fast");
-    
-  } else if (profile == 0) {
-
-    steadySpeed = 45;
-    Kp = 0.085;
-    Kd = 0.065;
-    
-    lcd.setCursor(12, 0);
-    lcd.print("Pink");
-    lcd.setCursor(12, 1);
-    lcd.print("Slow");
-
-  }
 
 }

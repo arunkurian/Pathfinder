@@ -4,7 +4,7 @@
 
   Functions for serial communications with ODROID and BT.
 
-  modified 14 Nov 2015
+  modified 24 Nov 2015
   by Arun Kurian
  */
 
@@ -94,5 +94,35 @@ int odroidCommand() {
 
   camServo.write(50);             // Set servo motor to default 50 degrees
   return turnPos;
+
+}
+
+void switchProfile(int profile) {
+
+  if (profile == 1) {
+
+    steadySpeed = 70;
+    intCounterMin = 3;
+    Kp = 0.095;
+    Kd = 0.09;
+
+    lcd.setCursor(11, 0);
+    lcd.print("Green");
+    lcd.setCursor(12, 1);
+    lcd.print("Fast");
+    
+  } else if (profile == 0) {
+
+    steadySpeed = 50;
+    intCounterMin = 8;
+    Kp = 0.085;
+    Kd = 0.07;
+    
+    lcd.setCursor(12, 0);
+    lcd.print("Pink");
+    lcd.setCursor(12, 1);
+    lcd.print("Slow");
+
+  }
 
 }

@@ -4,14 +4,13 @@
 
   Obstacle avoidance with brushed DC motors, encoders, and IR sensors.
 
-  modified 9 Nov 2015
+  modified 1 Dec 2015
   by Arun Kurian
  */
 
 // Include Libraries
 #include <SoftwareSerial.h>
 #include <PololuQik.h>
-#include <Encoder.h>
 #include <autotune.h>
 #include <microsmooth.h>
 #include <QTRSensors.h>
@@ -21,9 +20,6 @@
 
 // Initialization
 PololuQik2s9v1 qik(11, 12, 10); // Constructor for qik motor controller
-
-Encoder leftEncoder(2, 3);      // Initialize left encoder on pins 2 (A) and 3 (B)
-Encoder rightEncoder(21, 20);   // Initialize right encoder on pins 20 (A) and 21 (B)
 
 int incomingByte;               // Incoming serial byte
 int robotMode;                  // Define autonomous(1) or remote control(0) mode
@@ -60,6 +56,7 @@ uint16_t *lineLeftPtr;          // Left IR history pointer
 uint16_t *lineRightPtr;         // Right IR history pointer
 
 int intCounter;                 // Intersection counter to wait and verify intersection points
+int intCounterMin;
 int minLineValue = 350;         // Minimum average line readings to detect intersection
 
 int steadySpeed;                // Steady speed for robot
@@ -101,9 +98,10 @@ void setup() {
   qik.init();                     // Reset qik and initialize serial comms at 9600 bps
   lcd.begin(16, 2);               // Set up LCD for 16x2 display
 
-  switchProfile(0);
+  switchProfile(0);               // Set default "slow" profile
   
   lcd.clear();
+  
   lcd.setCursor(3, 0);            // Display introduction message
   lcd.print("Pathfinder");
 
@@ -138,7 +136,9 @@ void setup() {
   calibrateLineSensors();         // Run routine to calibrate line sensors
 
   delay(2000);                    // Pause in setup to verify cal before going to main loop
-randomSeed(analogRead(0));
+  
+  lcd.clear();
+  
 }
 
 
@@ -152,7 +152,6 @@ void loop() {
 
   readLines(forwardLineSensors, forwardSensors, leftSensors, rightSensors);  // Read lines
 
-  camServo.write(50);
   int obstacle = obstacleDetected();                                         // Determine if obstacle is detected
 
   // Wait until atleast three reads have been completed
@@ -165,7 +164,7 @@ void loop() {
       if (leftReading > minLineValue || rightReading > minLineValue || notFound == 1) {
 
         // Wait until intersection is confirmed
-        if (intCounter > 3) {
+        if (intCounter > intCounterMin) {
 
           // Stop
           qik.setSpeeds(0, 0);

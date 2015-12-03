@@ -16,32 +16,6 @@ ServoAddCommand = 'A'
 ServoSubtractCommand = 'S'
 QuitCommand = 'Q'
 
-def setColorRanges(setting):
-
-	# If Home
-	if setting == 'home':
-
-		# Pink
-		pinkLowerHSV = np.array([135, 75, 50])
-		pinkUpperHSV = np.array([170, 255, 255])
-		
-		# Green
-		greenLowerHSV = np.array([20, 75, 50])
-		greenUpperHSV = np.array([60, 255, 255])
-
-	# If Lab
-	elif setting == 'lab':
-
-		# Pink
-		pinkLowerHSV = np.array([135, 50, 0])
-		pinkUpperHSV = np.array([179, 255, 255])
-
-		# Green
-		greenLowerHSV = np.array([20, 75, 50])
-		greenUpperHSV = np.array([60, 255, 255])
-
-	return (pinkLowerHSV, pinkUpperHSV, greenLowerHSV, greenUpperHSV)
-
 try:
 
 	arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
@@ -66,16 +40,11 @@ try:
 				desiredShape = chr(int(arduino.read(3)))
 				print desiredShape
 
-				# Mode: debug, simple
 				# Camera source: Linux VM - 1, ODROID - 0
 				# Camera hue: Home - 45.0, Lab - 125.0
-				shapes = PathfinderCV('debug', 1, 45.0)
+				shapes = PathfinderCV(1, 125.0)
 
 				shapes.numIntersections = 3
-					
-				(shapes.pinkLowerHSV, shapes.pinkUpperHSV, shapes.greenLowerHSV, shapes.greenUpperHSV) = setColorRanges('home')
-				shapes.lowerHSV = shapes.pinkLowerHSV
-				shapes.upperHSV = shapes.pinkUpperHSV
 
 				shapes.signColor = 0
 

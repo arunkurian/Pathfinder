@@ -12,9 +12,13 @@ import math
 class PathfinderCV(object):
 
 	# Initialize the PathfinderCV instance, prepare and start video capture
-	def __init__(self, mode, camSource, camHue):
+	def __init__(self, camSource, camHue):
 
-		self.mode = mode
+
+		if camSource == 1:
+			self.mode = 'debug'
+		else:
+			self.mode = 'simple'
 
 		# Set script start time
 		self.scriptStartTime = time.time()
@@ -24,6 +28,17 @@ class PathfinderCV(object):
 
 		# Setup camera with given hue
 		self.prepCamera(camHue)
+
+		# Pink
+		self.pinkLowerHSV = np.array([135, 50, 0])
+		self.pinkUpperHSV = np.array([179, 255, 255])
+		
+		# Green
+		self.greenLowerHSV = np.array([20, 50, 0])
+		self.greenUpperHSV = np.array([60, 255, 255])
+
+		self.lowerHSV = self.pinkLowerHSV
+		self.upperHSV = self.pinkUpperHSV
 
 		# Arbitrary initial value for centroid error
 		self.centroidError = 100
@@ -66,7 +81,7 @@ class PathfinderCV(object):
 			# Define bounding box
 			maxContour, maxRectangle, maxContourArea = self.detectBoundary(frame, contours)
 
-			if not maxRectangle:
+			if not maxRectangle and not self.shapeSets:
 				
 				self.flipColor()
 
@@ -103,10 +118,6 @@ class PathfinderCV(object):
 
 				# Identify all nested shapes
 				self.detected = self.detectNestedShapes(frame, contours, hierarchy, maxContour, maxRectangle, maxContourArea)
-
-			else: 
-
-				self.centroidError = 100
 
 		if self.mode == 'debug':
 
@@ -169,7 +180,7 @@ class PathfinderCV(object):
 		imgRangeMask = cv2.inRange(imgHSV, self.lowerHSV, self.upperHSV)
 
 		# Morphological transformations
-		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
 		imgMask = cv2.morphologyEx(imgRangeMask, cv2.MORPH_OPEN, kernel)
 
 		# Use Canny edge detection to capture the edges of the shapes
